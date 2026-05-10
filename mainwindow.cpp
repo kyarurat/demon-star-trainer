@@ -23,8 +23,11 @@ constexpr int TrainerPollIntervalMs = 100;
 #ifdef Q_OS_WIN
 constexpr int InfinitePlanesHotkeyId = 0x4401;
 constexpr int InfiniteNukesHotkeyId = 0x4402;
+constexpr int InfiniteHealthHotkeyId = 0x4403;
+constexpr quintptr InfiniteHealthOffset = 0x14C7950;
 constexpr quintptr InfinitePlanesOffset = 0x14C7954;
 constexpr quintptr InfiniteNukesOffset = 0x14C80E4;
+constexpr qint32 InfiniteHealthLockedValue = 160;
 constexpr qint32 CheatValueLimit = 10;
 
 bool executableNameEquals(const wchar_t *name, const QString &expected)
@@ -96,10 +99,13 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(ui->infinitePlanesCheckBox, &QCheckBox::toggled, this, &MainWindow::applyInfinitePlanes);
     connect(ui->infiniteNukesCheckBox, &QCheckBox::toggled, this, &MainWindow::applyInfiniteNukes);
+    connect(ui->infiniteHealthCheckBox, &QCheckBox::toggled, this, &MainWindow::applyInfiniteHealth);
 
+    setGameAvailable(false);
     setupHotkeys();
     setupTrainerTimer();
-    statusBar()->showMessage(QStringLiteral("Ctrl+1 toggles Infinite Planes, Ctrl+2 toggles Infinite Nukes"));
+    updateTrainer();
+    statusBar()->showMessage(QStringLiteral("Ctrl+1 切换无限飞机，Ctrl+2 切换无限核弹，Ctrl+3 切换无限生命值"));
 }
 
 MainWindow::~MainWindow()
@@ -131,6 +137,10 @@ void MainWindow::setupLocalHotkeys()
     auto *nukesShortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+2")), this);
     nukesShortcut->setContext(Qt::ApplicationShortcut);
     connect(nukesShortcut, &QShortcut::activated, this, &MainWindow::toggleInfiniteNukes);
+
+    auto *healthShortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+3")), this);
+    healthShortcut->setContext(Qt::ApplicationShortcut);
+    connect(healthShortcut, &QShortcut::activated, this, &MainWindow::toggleInfiniteHealth);
 }
 
 void MainWindow::setupTrainerTimer()
@@ -144,6 +154,41 @@ void MainWindow::setupTrainerTimer()
 void MainWindow::updateTrainer()
 {
 #ifdef Q_OS_WIN
+    const bool wasGameAvailable = gameAvailable;
+    const bool hadEnabledCheat = ui->infinitePlanesCheckBox->isChecked()
+                                 || ui->infiniteNukesCheckBox->isChecked()
+                                 || ui->infiniteHealthCheckBox->isChecked();
+    const unsigned long previousGameProcessId = gameProcessId;
+    gameAvailable = ensureGameProcess();
+    setGameAvailable(gameAvailable);
+
+    if (!gameAvailable) {
+        disableCheats();
+        resetInfinitePlanesState();
+        resetInfiniteNukesState();
+        resetInfiniteHealthState();
+        closeGameProcess();
+
+        if (wasGameAvailable || hadEnabledCheat) {
+            statusBar()->showMessage(QStringLiteral("游戏未启动或已退出，修改项已关闭"), 2000);
+        }
+        return;
+    }
+
+    const bool gameProcessChanged = wasGameAvailable && previousGameProcessId != 0 && gameProcessId != previousGameProcessId;
+    if (gameProcessChanged && hadEnabledCheat) {
+        disableCheats();
+        resetInfinitePlanesState();
+        resetInfiniteNukesState();
+        resetInfiniteHealthState();
+        statusBar()->showMessage(QStringLiteral("游戏进程已重启，修改项已关闭"), 2000);
+        return;
+    }
+
+    if (!wasGameAvailable) {
+        statusBar()->showMessage(QStringLiteral("已检测到 demonstar.exe，可以启用修改项"), 2000);
+    }
+
     bool hasEnabledCheat = false;
 
     if (ui->infinitePlanesCheckBox->isChecked()) {
@@ -156,46 +201,100 @@ void MainWindow::updateTrainer()
         updateInfiniteNukes();
     }
 
+    if (ui->infiniteHealthCheckBox->isChecked()) {
+        hasEnabledCheat = true;
+        updateInfiniteHealth();
+    }
+
     if (!hasEnabledCheat) {
         resetInfinitePlanesState();
         resetInfiniteNukesState();
-        waitingForGameProcess = false;
-        closeGameProcess();
+        resetInfiniteHealthState();
     }
+#else
+    gameAvailable = false;
+    setGameAvailable(false);
+    disableCheats();
 #endif
+}
+
+void MainWindow::setGameAvailable(bool available)
+{
+    ui->cheatsGroupBox->setEnabled(available);
+    ui->gameStatusValueLabel->setText(available ? QStringLiteral("已启动，可以修改")
+                                                : QStringLiteral("未启动，修改已禁用"));
+    ui->gameStatusValueLabel->setStyleSheet(available ? QStringLiteral("color: #1f7a3f; font-weight: 600;")
+                                                      : QStringLiteral("color: #a33; font-weight: 600;"));
+}
+
+void MainWindow::disableCheats()
+{
+    const QSignalBlocker planesBlocker(ui->infinitePlanesCheckBox);
+    const QSignalBlocker nukesBlocker(ui->infiniteNukesCheckBox);
+    const QSignalBlocker healthBlocker(ui->infiniteHealthCheckBox);
+
+    ui->infinitePlanesCheckBox->setChecked(false);
+    ui->infiniteNukesCheckBox->setChecked(false);
+    ui->infiniteHealthCheckBox->setChecked(false);
 }
 
 void MainWindow::toggleInfinitePlanes()
 {
+    if (!gameAvailable) {
+        statusBar()->showMessage(QStringLiteral("请先启动 demonstar.exe"), 2000);
+        return;
+    }
+
     ui->infinitePlanesCheckBox->toggle();
 }
 
 void MainWindow::toggleInfiniteNukes()
 {
+    if (!gameAvailable) {
+        statusBar()->showMessage(QStringLiteral("请先启动 demonstar.exe"), 2000);
+        return;
+    }
+
     ui->infiniteNukesCheckBox->toggle();
+}
+
+void MainWindow::toggleInfiniteHealth()
+{
+    if (!gameAvailable) {
+        statusBar()->showMessage(QStringLiteral("请先启动 demonstar.exe"), 2000);
+        return;
+    }
+
+    ui->infiniteHealthCheckBox->toggle();
 }
 
 void MainWindow::applyInfinitePlanes(bool enabled)
 {
 #ifdef Q_OS_WIN
     resetInfinitePlanesState();
-    waitingForGameProcess = false;
 
     if (enabled) {
+        if (!gameAvailable) {
+            const QSignalBlocker blocker(ui->infinitePlanesCheckBox);
+            ui->infinitePlanesCheckBox->setChecked(false);
+            statusBar()->showMessage(QStringLiteral("游戏未启动，无法启用无限飞机"), 2000);
+            return;
+        }
+
         updateInfinitePlanes();
         return;
     }
 
-    if (!ui->infiniteNukesCheckBox->isChecked()) {
+    if (!ui->infiniteNukesCheckBox->isChecked() && !ui->infiniteHealthCheckBox->isChecked()) {
         closeGameProcess();
     }
-    statusBar()->showMessage(QStringLiteral("Infinite Planes disabled"), 2000);
+    statusBar()->showMessage(QStringLiteral("无限飞机已关闭"), 2000);
 #else
     if (enabled) {
         const QSignalBlocker blocker(ui->infinitePlanesCheckBox);
         ui->infinitePlanesCheckBox->setChecked(false);
     }
-    statusBar()->showMessage(QStringLiteral("Memory editing is only implemented on Windows"), 2000);
+    statusBar()->showMessage(QStringLiteral("内存修改功能仅支持 Windows"), 2000);
 #endif
 }
 
@@ -203,23 +302,59 @@ void MainWindow::applyInfiniteNukes(bool enabled)
 {
 #ifdef Q_OS_WIN
     resetInfiniteNukesState();
-    waitingForGameProcess = false;
 
     if (enabled) {
+        if (!gameAvailable) {
+            const QSignalBlocker blocker(ui->infiniteNukesCheckBox);
+            ui->infiniteNukesCheckBox->setChecked(false);
+            statusBar()->showMessage(QStringLiteral("游戏未启动，无法启用无限核弹"), 2000);
+            return;
+        }
+
         updateInfiniteNukes();
         return;
     }
 
-    if (!ui->infinitePlanesCheckBox->isChecked()) {
+    if (!ui->infinitePlanesCheckBox->isChecked() && !ui->infiniteHealthCheckBox->isChecked()) {
         closeGameProcess();
     }
-    statusBar()->showMessage(QStringLiteral("Infinite Nukes disabled"), 2000);
+    statusBar()->showMessage(QStringLiteral("无限核弹已关闭"), 2000);
 #else
     if (enabled) {
         const QSignalBlocker blocker(ui->infiniteNukesCheckBox);
         ui->infiniteNukesCheckBox->setChecked(false);
     }
-    statusBar()->showMessage(QStringLiteral("Memory editing is only implemented on Windows"), 2000);
+    statusBar()->showMessage(QStringLiteral("内存修改功能仅支持 Windows"), 2000);
+#endif
+}
+
+void MainWindow::applyInfiniteHealth(bool enabled)
+{
+#ifdef Q_OS_WIN
+    resetInfiniteHealthState();
+
+    if (enabled) {
+        if (!gameAvailable) {
+            const QSignalBlocker blocker(ui->infiniteHealthCheckBox);
+            ui->infiniteHealthCheckBox->setChecked(false);
+            statusBar()->showMessage(QStringLiteral("游戏未启动，无法启用无限生命值"), 2000);
+            return;
+        }
+
+        updateInfiniteHealth();
+        return;
+    }
+
+    if (!ui->infinitePlanesCheckBox->isChecked() && !ui->infiniteNukesCheckBox->isChecked()) {
+        closeGameProcess();
+    }
+    statusBar()->showMessage(QStringLiteral("无限生命值已关闭"), 2000);
+#else
+    if (enabled) {
+        const QSignalBlocker blocker(ui->infiniteHealthCheckBox);
+        ui->infiniteHealthCheckBox->setChecked(false);
+    }
+    statusBar()->showMessage(QStringLiteral("内存修改功能仅支持 Windows"), 2000);
 #endif
 }
 
@@ -228,32 +363,30 @@ void MainWindow::updateInfinitePlanes()
 {
     if (!ensureGameProcess()) {
         resetInfinitePlanesState();
-        if (!waitingForGameProcess) {
-            waitingForGameProcess = true;
-            statusBar()->showMessage(QStringLiteral("Waiting for demonstar.exe"));
-        }
+        gameAvailable = false;
+        setGameAvailable(false);
+        disableCheats();
+        closeGameProcess();
+        statusBar()->showMessage(QStringLiteral("游戏未启动或已退出，修改项已关闭"), 2000);
         return;
     }
 
     qint32 currentValue = 0;
     if (!readInfinitePlanesValue(&currentValue)) {
         resetInfinitePlanesState();
+        disableCheats();
         closeGameProcess();
-        waitingForGameProcess = false;
-        statusBar()->showMessage(QStringLiteral("Failed to read Infinite Planes value"), 2000);
+        gameAvailable = false;
+        setGameAvailable(false);
+        statusBar()->showMessage(QStringLiteral("读取无限飞机失败，修改项已关闭"), 2000);
         return;
-    }
-
-    if (waitingForGameProcess) {
-        waitingForGameProcess = false;
-        statusBar()->showMessage(QStringLiteral("Attached to demonstar.exe"), 2000);
     }
 
     if (currentValue > CheatValueLimit) {
         hasInfinitePlanesLockedValue = false;
         if (!infinitePlanesPausedAboveLimit) {
             infinitePlanesPausedAboveLimit = true;
-            statusBar()->showMessage(QStringLiteral("Infinite Planes paused above 10"), 2000);
+            statusBar()->showMessage(QStringLiteral("无限飞机数值超过 10，暂停写入"), 2000);
         }
         return;
     }
@@ -262,15 +395,18 @@ void MainWindow::updateInfinitePlanes()
         infinitePlanesLockedValue = currentValue;
         hasInfinitePlanesLockedValue = true;
         infinitePlanesPausedAboveLimit = false;
-        statusBar()->showMessage(QStringLiteral("Infinite Planes locked"), 2000);
+        statusBar()->showMessage(QStringLiteral("无限飞机已锁定"), 2000);
         return;
     }
 
     if (currentValue < infinitePlanesLockedValue) {
         if (!writeInfinitePlanesValue(infinitePlanesLockedValue)) {
             resetInfinitePlanesState();
+            disableCheats();
             closeGameProcess();
-            statusBar()->showMessage(QStringLiteral("Failed to write Infinite Planes value"), 2000);
+            gameAvailable = false;
+            setGameAvailable(false);
+            statusBar()->showMessage(QStringLiteral("写入无限飞机失败，修改项已关闭"), 2000);
         }
         return;
     }
@@ -284,32 +420,30 @@ void MainWindow::updateInfiniteNukes()
 {
     if (!ensureGameProcess()) {
         resetInfiniteNukesState();
-        if (!waitingForGameProcess) {
-            waitingForGameProcess = true;
-            statusBar()->showMessage(QStringLiteral("Waiting for demonstar.exe"));
-        }
+        gameAvailable = false;
+        setGameAvailable(false);
+        disableCheats();
+        closeGameProcess();
+        statusBar()->showMessage(QStringLiteral("游戏未启动或已退出，修改项已关闭"), 2000);
         return;
     }
 
     qint32 currentValue = 0;
     if (!readInfiniteNukesValue(&currentValue)) {
         resetInfiniteNukesState();
+        disableCheats();
         closeGameProcess();
-        waitingForGameProcess = false;
-        statusBar()->showMessage(QStringLiteral("Failed to read Infinite Nukes value"), 2000);
+        gameAvailable = false;
+        setGameAvailable(false);
+        statusBar()->showMessage(QStringLiteral("读取无限核弹失败，修改项已关闭"), 2000);
         return;
-    }
-
-    if (waitingForGameProcess) {
-        waitingForGameProcess = false;
-        statusBar()->showMessage(QStringLiteral("Attached to demonstar.exe"), 2000);
     }
 
     if (currentValue > CheatValueLimit) {
         hasInfiniteNukesLockedValue = false;
         if (!infiniteNukesPausedAboveLimit) {
             infiniteNukesPausedAboveLimit = true;
-            statusBar()->showMessage(QStringLiteral("Infinite Nukes paused above 10"), 2000);
+            statusBar()->showMessage(QStringLiteral("无限核弹数值超过 10，暂停写入"), 2000);
         }
         return;
     }
@@ -318,15 +452,18 @@ void MainWindow::updateInfiniteNukes()
         infiniteNukesLockedValue = currentValue;
         hasInfiniteNukesLockedValue = true;
         infiniteNukesPausedAboveLimit = false;
-        statusBar()->showMessage(QStringLiteral("Infinite Nukes locked"), 2000);
+        statusBar()->showMessage(QStringLiteral("无限核弹已锁定"), 2000);
         return;
     }
 
     if (currentValue < infiniteNukesLockedValue) {
         if (!writeInfiniteNukesValue(infiniteNukesLockedValue)) {
             resetInfiniteNukesState();
+            disableCheats();
             closeGameProcess();
-            statusBar()->showMessage(QStringLiteral("Failed to write Infinite Nukes value"), 2000);
+            gameAvailable = false;
+            setGameAvailable(false);
+            statusBar()->showMessage(QStringLiteral("写入无限核弹失败，修改项已关闭"), 2000);
         }
         return;
     }
@@ -334,6 +471,62 @@ void MainWindow::updateInfiniteNukes()
     if (currentValue > infiniteNukesLockedValue) {
         infiniteNukesLockedValue = currentValue;
     }
+}
+
+void MainWindow::updateInfiniteHealth()
+{
+    if (!ensureGameProcess()) {
+        resetInfiniteHealthState();
+        gameAvailable = false;
+        setGameAvailable(false);
+        disableCheats();
+        closeGameProcess();
+        statusBar()->showMessage(QStringLiteral("游戏未启动或已退出，修改项已关闭"), 2000);
+        return;
+    }
+
+    qint32 currentValue = 0;
+    if (!readInfiniteHealthValue(&currentValue)) {
+        resetInfiniteHealthState();
+        disableCheats();
+        closeGameProcess();
+        gameAvailable = false;
+        setGameAvailable(false);
+        statusBar()->showMessage(QStringLiteral("读取无限生命值失败，修改项已关闭"), 2000);
+        return;
+    }
+
+    if (!hasInfiniteHealthLockedValue) {
+        infiniteHealthLockedValue = InfiniteHealthLockedValue;
+        hasInfiniteHealthLockedValue = true;
+        if (currentValue < infiniteHealthLockedValue) {
+            if (!writeInfiniteHealthValue(infiniteHealthLockedValue)) {
+                resetInfiniteHealthState();
+                disableCheats();
+                closeGameProcess();
+                gameAvailable = false;
+                setGameAvailable(false);
+                statusBar()->showMessage(QStringLiteral("写入无限生命值失败，修改项已关闭"), 2000);
+                return;
+            }
+        }
+        statusBar()->showMessage(QStringLiteral("无限生命值已锁定"), 2000);
+        return;
+    }
+
+    if (currentValue < infiniteHealthLockedValue) {
+        if (!writeInfiniteHealthValue(infiniteHealthLockedValue)) {
+            resetInfiniteHealthState();
+            disableCheats();
+            closeGameProcess();
+            gameAvailable = false;
+            setGameAvailable(false);
+            statusBar()->showMessage(QStringLiteral("写入无限生命值失败，修改项已关闭"), 2000);
+        }
+        return;
+    }
+
+    infiniteHealthLockedValue = InfiniteHealthLockedValue;
 }
 
 void MainWindow::resetInfinitePlanesState()
@@ -348,6 +541,12 @@ void MainWindow::resetInfiniteNukesState()
     infiniteNukesLockedValue = 0;
     hasInfiniteNukesLockedValue = false;
     infiniteNukesPausedAboveLimit = false;
+}
+
+void MainWindow::resetInfiniteHealthState()
+{
+    infiniteHealthLockedValue = 0;
+    hasInfiniteHealthLockedValue = false;
 }
 
 bool MainWindow::ensureGameProcess()
@@ -445,14 +644,39 @@ bool MainWindow::writeInfiniteNukesValue(qint32 value) const
            && bytesWritten == sizeof(value);
 }
 
+bool MainWindow::readInfiniteHealthValue(qint32 *value) const
+{
+    if (gameProcessHandle == nullptr || gameBaseAddress == 0 || value == nullptr) {
+        return false;
+    }
+
+    SIZE_T bytesRead = 0;
+    const auto address = reinterpret_cast<LPCVOID>(gameBaseAddress + InfiniteHealthOffset);
+    return ReadProcessMemory(static_cast<HANDLE>(gameProcessHandle), address, value, sizeof(*value), &bytesRead)
+           && bytesRead == sizeof(*value);
+}
+
+bool MainWindow::writeInfiniteHealthValue(qint32 value) const
+{
+    if (gameProcessHandle == nullptr || gameBaseAddress == 0) {
+        return false;
+    }
+
+    SIZE_T bytesWritten = 0;
+    const auto address = reinterpret_cast<LPVOID>(gameBaseAddress + InfiniteHealthOffset);
+    return WriteProcessMemory(static_cast<HANDLE>(gameProcessHandle), address, &value, sizeof(value), &bytesWritten)
+           && bytesWritten == sizeof(value);
+}
+
 bool MainWindow::registerGlobalHotkeys()
 {
     const auto hwnd = reinterpret_cast<HWND>(winId());
 
     infinitePlanesHotkeyRegistered = RegisterHotKey(hwnd, InfinitePlanesHotkeyId, MOD_CONTROL, '1') != 0;
     infiniteNukesHotkeyRegistered = RegisterHotKey(hwnd, InfiniteNukesHotkeyId, MOD_CONTROL, '2') != 0;
+    infiniteHealthHotkeyRegistered = RegisterHotKey(hwnd, InfiniteHealthHotkeyId, MOD_CONTROL, '3') != 0;
 
-    if (!infinitePlanesHotkeyRegistered || !infiniteNukesHotkeyRegistered) {
+    if (!infinitePlanesHotkeyRegistered || !infiniteNukesHotkeyRegistered || !infiniteHealthHotkeyRegistered) {
         unregisterGlobalHotkeys();
         return false;
     }
@@ -472,6 +696,11 @@ void MainWindow::unregisterGlobalHotkeys()
     if (infiniteNukesHotkeyRegistered) {
         UnregisterHotKey(hwnd, InfiniteNukesHotkeyId);
         infiniteNukesHotkeyRegistered = false;
+    }
+
+    if (infiniteHealthHotkeyRegistered) {
+        UnregisterHotKey(hwnd, InfiniteHealthHotkeyId);
+        infiniteHealthHotkeyRegistered = false;
     }
 }
 
@@ -497,6 +726,12 @@ bool MainWindow::nativeEvent(const QByteArray &eventType, void *message, qintptr
         return true;
     case InfiniteNukesHotkeyId:
         toggleInfiniteNukes();
+        if (result != nullptr) {
+            *result = 0;
+        }
+        return true;
+    case InfiniteHealthHotkeyId:
+        toggleInfiniteHealth();
         if (result != nullptr) {
             *result = 0;
         }

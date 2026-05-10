@@ -25,22 +25,30 @@ private:
     void setupLocalHotkeys();
     void setupTrainerTimer();
     void updateTrainer();
+    void setGameAvailable(bool available);
+    void disableCheats();
     void toggleInfinitePlanes();
     void toggleInfiniteNukes();
+    void toggleInfiniteHealth();
     void applyInfinitePlanes(bool enabled);
     void applyInfiniteNukes(bool enabled);
+    void applyInfiniteHealth(bool enabled);
 
 #ifdef Q_OS_WIN
     void updateInfinitePlanes();
     void updateInfiniteNukes();
+    void updateInfiniteHealth();
     void resetInfinitePlanesState();
     void resetInfiniteNukesState();
+    void resetInfiniteHealthState();
     bool ensureGameProcess();
     void closeGameProcess();
     bool readInfinitePlanesValue(qint32 *value) const;
     bool writeInfinitePlanesValue(qint32 value) const;
     bool readInfiniteNukesValue(qint32 *value) const;
     bool writeInfiniteNukesValue(qint32 value) const;
+    bool readInfiniteHealthValue(qint32 *value) const;
+    bool writeInfiniteHealthValue(qint32 value) const;
 
 protected:
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
@@ -58,17 +66,20 @@ private:
     quintptr gameBaseAddress = 0;
     qint32 infinitePlanesLockedValue = 0;
     qint32 infiniteNukesLockedValue = 0;
+    qint32 infiniteHealthLockedValue = 0;
     bool hasInfinitePlanesLockedValue = false;
     bool hasInfiniteNukesLockedValue = false;
+    bool hasInfiniteHealthLockedValue = false;
     bool infinitePlanesPausedAboveLimit = false;
     bool infiniteNukesPausedAboveLimit = false;
-    bool waitingForGameProcess = false;
 
     bool infinitePlanesHotkeyRegistered = false;
     bool infiniteNukesHotkeyRegistered = false;
+    bool infiniteHealthHotkeyRegistered = false;
 #endif
 
     QTimer *trainerTimer = nullptr;
+    bool gameAvailable = false;
     Ui::MainWindow *ui;
 };
 #endif // MAINWINDOW_H
