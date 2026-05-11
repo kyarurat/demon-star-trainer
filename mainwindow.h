@@ -1,4 +1,4 @@
-#ifndef MAINWINDOW_H
+﻿#ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
 #include "trainer_core/ITrainer.h"
@@ -32,17 +32,17 @@ private:
     void setupTrainerTimer();
     void updateTrainer();
     void setGameAvailable(bool available);
-    void syncCheatCheckbox(demonstar::CheatId cheat, bool enabled);
-    void syncAllCheatCheckboxes();
-    void toggleInfinitePlanes();
-    void toggleInfiniteNukes();
-    void toggleInfiniteHealth();
+    void syncLockCheckbox(demonstar::TrainerValueId valueId, bool enabled);
+    void syncAllLockCheckboxes();
+    void togglePlanes();
+    void toggleNukes();
+    void toggleHealth();
     void increasePlanes();
     void increaseNukes();
     void increaseHealth();
-    void applyInfinitePlanes(bool enabled);
-    void applyInfiniteNukes(bool enabled);
-    void applyInfiniteHealth(bool enabled);
+    void applyPlanes(bool enabled);
+    void applyNukes(bool enabled);
+    void applyHealth(bool enabled);
 
 #ifdef Q_OS_WIN
 protected:
@@ -56,9 +56,9 @@ private:
     bool registerGlobalHotkeys();
     void unregisterGlobalHotkeys();
 
-    bool infinitePlanesHotkeyRegistered = false;
-    bool infiniteNukesHotkeyRegistered = false;
-    bool infiniteHealthHotkeyRegistered = false;
+    bool PlanesHotkeyRegistered = false;
+    bool NukesHotkeyRegistered = false;
+    bool HealthHotkeyRegistered = false;
 #endif
 
     QTimer *trainerTimer = nullptr;

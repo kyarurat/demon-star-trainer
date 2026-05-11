@@ -1,4 +1,4 @@
-#include "mainwindow.h"
+﻿#include "mainwindow.h"
 #include "./ui_mainwindow.h"
 
 #ifdef Q_OS_WIN
@@ -26,9 +26,9 @@ namespace {
 constexpr int TrainerPollIntervalMs = 100;
 
 #ifdef Q_OS_WIN
-constexpr int InfinitePlanesHotkeyId = 0x4401;
-constexpr int InfiniteNukesHotkeyId = 0x4402;
-constexpr int InfiniteHealthHotkeyId = 0x4403;
+constexpr int PlanesHotkeyId = 0x4401;
+constexpr int NukesHotkeyId = 0x4402;
+constexpr int HealthHotkeyId = 0x4403;
 constexpr int AddPlanesHotkeyId = 0x4411;
 constexpr int AddNukesHotkeyId = 0x4412;
 constexpr int AddHealthHotkeyId = 0x4413;
@@ -66,9 +66,9 @@ MainWindow::MainWindow(QWidget *parent)
     trainer->setListener(this);
 #endif
 
-    connect(ui->infinitePlanesCheckBox, &QCheckBox::toggled, this, &MainWindow::applyInfinitePlanes);
-    connect(ui->infiniteNukesCheckBox, &QCheckBox::toggled, this, &MainWindow::applyInfiniteNukes);
-    connect(ui->infiniteHealthCheckBox, &QCheckBox::toggled, this, &MainWindow::applyInfiniteHealth);
+    connect(ui->infinitePlanesCheckBox, &QCheckBox::toggled, this, &MainWindow::applyPlanes);
+    connect(ui->infiniteNukesCheckBox, &QCheckBox::toggled, this, &MainWindow::applyNukes);
+    connect(ui->infiniteHealthCheckBox, &QCheckBox::toggled, this, &MainWindow::applyHealth);
     connect(ui->addPlanesButton, &QPushButton::clicked, this, &MainWindow::increasePlanes);
     connect(ui->addNukesButton, &QPushButton::clicked, this, &MainWindow::increaseNukes);
     connect(ui->addHealthButton, &QPushButton::clicked, this, &MainWindow::increaseHealth);
@@ -95,10 +95,10 @@ void MainWindow::onTrainerEvent(const demonstar::TrainerEvent &event)
 {
     setGameAvailable(event.gameAvailable);
 
-    if (event.cheat != demonstar::CheatId::None) {
-        syncCheatCheckbox(event.cheat, event.cheatEnabled);
+    if (event.valueId != demonstar::TrainerValueId::None) {
+        syncLockCheckbox(event.valueId, event.locked);
     } else {
-        syncAllCheatCheckboxes();
+        syncAllLockCheckboxes();
     }
 
     if (!event.message.empty()) {
@@ -121,15 +121,15 @@ void MainWindow::setupLocalHotkeys()
 {
     auto *planesShortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+1")), this);
     planesShortcut->setContext(Qt::ApplicationShortcut);
-    connect(planesShortcut, &QShortcut::activated, this, &MainWindow::toggleInfinitePlanes);
+    connect(planesShortcut, &QShortcut::activated, this, &MainWindow::togglePlanes);
 
     auto *nukesShortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+2")), this);
     nukesShortcut->setContext(Qt::ApplicationShortcut);
-    connect(nukesShortcut, &QShortcut::activated, this, &MainWindow::toggleInfiniteNukes);
+    connect(nukesShortcut, &QShortcut::activated, this, &MainWindow::toggleNukes);
 
     auto *healthShortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+3")), this);
     healthShortcut->setContext(Qt::ApplicationShortcut);
-    connect(healthShortcut, &QShortcut::activated, this, &MainWindow::toggleInfiniteHealth);
+    connect(healthShortcut, &QShortcut::activated, this, &MainWindow::toggleHealth);
 
     auto *addPlanesShortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+1")), this);
     addPlanesShortcut->setContext(Qt::ApplicationShortcut);
@@ -158,11 +158,11 @@ void MainWindow::updateTrainer()
     if (trainer) {
         trainer->tick();
         setGameAvailable(trainer->isGameAvailable());
-        syncAllCheatCheckboxes();
+        syncAllLockCheckboxes();
     }
 #else
     setGameAvailable(false);
-    syncAllCheatCheckboxes();
+    syncAllLockCheckboxes();
 #endif
 }
 
@@ -182,9 +182,9 @@ void MainWindow::increasePlanes()
         return;
     }
 
-    trainer->addCheatValue(demonstar::CheatId::InfinitePlanes, ui->planesAmountSpinBox->value());
-    syncCheatCheckbox(demonstar::CheatId::InfinitePlanes,
-                      trainer->isCheatEnabled(demonstar::CheatId::InfinitePlanes));
+    trainer->addValue(demonstar::TrainerValueId::Planes, ui->planesAmountSpinBox->value());
+    syncLockCheckbox(demonstar::TrainerValueId::Planes,
+                      trainer->isValueLocked(demonstar::TrainerValueId::Planes));
 }
 
 void MainWindow::increaseNukes()
@@ -194,9 +194,9 @@ void MainWindow::increaseNukes()
         return;
     }
 
-    trainer->addCheatValue(demonstar::CheatId::InfiniteNukes, ui->nukesAmountSpinBox->value());
-    syncCheatCheckbox(demonstar::CheatId::InfiniteNukes,
-                      trainer->isCheatEnabled(demonstar::CheatId::InfiniteNukes));
+    trainer->addValue(demonstar::TrainerValueId::Nukes, ui->nukesAmountSpinBox->value());
+    syncLockCheckbox(demonstar::TrainerValueId::Nukes,
+                      trainer->isValueLocked(demonstar::TrainerValueId::Nukes));
 }
 
 void MainWindow::increaseHealth()
@@ -206,25 +206,25 @@ void MainWindow::increaseHealth()
         return;
     }
 
-    trainer->addCheatValue(demonstar::CheatId::InfiniteHealth, ui->healthAmountSpinBox->value());
-    syncCheatCheckbox(demonstar::CheatId::InfiniteHealth,
-                      trainer->isCheatEnabled(demonstar::CheatId::InfiniteHealth));
+    trainer->addValue(demonstar::TrainerValueId::Health, ui->healthAmountSpinBox->value());
+    syncLockCheckbox(demonstar::TrainerValueId::Health,
+                      trainer->isValueLocked(demonstar::TrainerValueId::Health));
 }
 
-void MainWindow::syncCheatCheckbox(demonstar::CheatId cheat, bool enabled)
+void MainWindow::syncLockCheckbox(demonstar::TrainerValueId valueId, bool enabled)
 {
     QCheckBox *checkBox = nullptr;
-    switch (cheat) {
-    case demonstar::CheatId::InfinitePlanes:
+    switch (valueId) {
+    case demonstar::TrainerValueId::Planes:
         checkBox = ui->infinitePlanesCheckBox;
         break;
-    case demonstar::CheatId::InfiniteNukes:
+    case demonstar::TrainerValueId::Nukes:
         checkBox = ui->infiniteNukesCheckBox;
         break;
-    case demonstar::CheatId::InfiniteHealth:
+    case demonstar::TrainerValueId::Health:
         checkBox = ui->infiniteHealthCheckBox;
         break;
-    case demonstar::CheatId::None:
+    case demonstar::TrainerValueId::None:
         return;
     }
 
@@ -232,26 +232,26 @@ void MainWindow::syncCheatCheckbox(demonstar::CheatId cheat, bool enabled)
     checkBox->setChecked(enabled);
 }
 
-void MainWindow::syncAllCheatCheckboxes()
+void MainWindow::syncAllLockCheckboxes()
 {
 #ifdef Q_OS_WIN
     if (trainer) {
-        syncCheatCheckbox(demonstar::CheatId::InfinitePlanes,
-                          trainer->isCheatEnabled(demonstar::CheatId::InfinitePlanes));
-        syncCheatCheckbox(demonstar::CheatId::InfiniteNukes,
-                          trainer->isCheatEnabled(demonstar::CheatId::InfiniteNukes));
-        syncCheatCheckbox(demonstar::CheatId::InfiniteHealth,
-                          trainer->isCheatEnabled(demonstar::CheatId::InfiniteHealth));
+        syncLockCheckbox(demonstar::TrainerValueId::Planes,
+                          trainer->isValueLocked(demonstar::TrainerValueId::Planes));
+        syncLockCheckbox(demonstar::TrainerValueId::Nukes,
+                          trainer->isValueLocked(demonstar::TrainerValueId::Nukes));
+        syncLockCheckbox(demonstar::TrainerValueId::Health,
+                          trainer->isValueLocked(demonstar::TrainerValueId::Health));
         return;
     }
 #endif
 
-    syncCheatCheckbox(demonstar::CheatId::InfinitePlanes, false);
-    syncCheatCheckbox(demonstar::CheatId::InfiniteNukes, false);
-    syncCheatCheckbox(demonstar::CheatId::InfiniteHealth, false);
+    syncLockCheckbox(demonstar::TrainerValueId::Planes, false);
+    syncLockCheckbox(demonstar::TrainerValueId::Nukes, false);
+    syncLockCheckbox(demonstar::TrainerValueId::Health, false);
 }
 
-void MainWindow::toggleInfinitePlanes()
+void MainWindow::togglePlanes()
 {
     if (!trainer || !trainer->isGameAvailable()) {
         statusBar()->showMessage(QStringLiteral("请先启动 demonstar.exe"), 2000);
@@ -261,7 +261,7 @@ void MainWindow::toggleInfinitePlanes()
     ui->infinitePlanesCheckBox->toggle();
 }
 
-void MainWindow::toggleInfiniteNukes()
+void MainWindow::toggleNukes()
 {
     if (!trainer || !trainer->isGameAvailable()) {
         statusBar()->showMessage(QStringLiteral("请先启动 demonstar.exe"), 2000);
@@ -271,7 +271,7 @@ void MainWindow::toggleInfiniteNukes()
     ui->infiniteNukesCheckBox->toggle();
 }
 
-void MainWindow::toggleInfiniteHealth()
+void MainWindow::toggleHealth()
 {
     if (!trainer || !trainer->isGameAvailable()) {
         statusBar()->showMessage(QStringLiteral("请先启动 demonstar.exe"), 2000);
@@ -281,47 +281,47 @@ void MainWindow::toggleInfiniteHealth()
     ui->infiniteHealthCheckBox->toggle();
 }
 
-void MainWindow::applyInfinitePlanes(bool enabled)
+void MainWindow::applyPlanes(bool enabled)
 {
 #ifdef Q_OS_WIN
     if (trainer) {
-        trainer->setCheatEnabled(demonstar::CheatId::InfinitePlanes, enabled);
-        syncCheatCheckbox(demonstar::CheatId::InfinitePlanes,
-                          trainer->isCheatEnabled(demonstar::CheatId::InfinitePlanes));
+        trainer->setValueLocked(demonstar::TrainerValueId::Planes, enabled);
+        syncLockCheckbox(demonstar::TrainerValueId::Planes,
+                          trainer->isValueLocked(demonstar::TrainerValueId::Planes));
     }
 #else
     Q_UNUSED(enabled)
-    syncCheatCheckbox(demonstar::CheatId::InfinitePlanes, false);
+    syncLockCheckbox(demonstar::TrainerValueId::Planes, false);
     statusBar()->showMessage(QStringLiteral("内存修改功能仅支持 Windows"), 2000);
 #endif
 }
 
-void MainWindow::applyInfiniteNukes(bool enabled)
+void MainWindow::applyNukes(bool enabled)
 {
 #ifdef Q_OS_WIN
     if (trainer) {
-        trainer->setCheatEnabled(demonstar::CheatId::InfiniteNukes, enabled);
-        syncCheatCheckbox(demonstar::CheatId::InfiniteNukes,
-                          trainer->isCheatEnabled(demonstar::CheatId::InfiniteNukes));
+        trainer->setValueLocked(demonstar::TrainerValueId::Nukes, enabled);
+        syncLockCheckbox(demonstar::TrainerValueId::Nukes,
+                          trainer->isValueLocked(demonstar::TrainerValueId::Nukes));
     }
 #else
     Q_UNUSED(enabled)
-    syncCheatCheckbox(demonstar::CheatId::InfiniteNukes, false);
+    syncLockCheckbox(demonstar::TrainerValueId::Nukes, false);
     statusBar()->showMessage(QStringLiteral("内存修改功能仅支持 Windows"), 2000);
 #endif
 }
 
-void MainWindow::applyInfiniteHealth(bool enabled)
+void MainWindow::applyHealth(bool enabled)
 {
 #ifdef Q_OS_WIN
     if (trainer) {
-        trainer->setCheatEnabled(demonstar::CheatId::InfiniteHealth, enabled);
-        syncCheatCheckbox(demonstar::CheatId::InfiniteHealth,
-                          trainer->isCheatEnabled(demonstar::CheatId::InfiniteHealth));
+        trainer->setValueLocked(demonstar::TrainerValueId::Health, enabled);
+        syncLockCheckbox(demonstar::TrainerValueId::Health,
+                          trainer->isValueLocked(demonstar::TrainerValueId::Health));
     }
 #else
     Q_UNUSED(enabled)
-    syncCheatCheckbox(demonstar::CheatId::InfiniteHealth, false);
+    syncLockCheckbox(demonstar::TrainerValueId::Health, false);
     statusBar()->showMessage(QStringLiteral("内存修改功能仅支持 Windows"), 2000);
 #endif
 }
@@ -331,14 +331,14 @@ bool MainWindow::registerGlobalHotkeys()
 {
     const auto hwnd = reinterpret_cast<HWND>(winId());
 
-    infinitePlanesHotkeyRegistered = RegisterHotKey(hwnd, InfinitePlanesHotkeyId, MOD_CONTROL, '1') != 0;
-    infiniteNukesHotkeyRegistered = RegisterHotKey(hwnd, InfiniteNukesHotkeyId, MOD_CONTROL, '2') != 0;
-    infiniteHealthHotkeyRegistered = RegisterHotKey(hwnd, InfiniteHealthHotkeyId, MOD_CONTROL, '3') != 0;
+    PlanesHotkeyRegistered = RegisterHotKey(hwnd, PlanesHotkeyId, MOD_CONTROL, '1') != 0;
+    NukesHotkeyRegistered = RegisterHotKey(hwnd, NukesHotkeyId, MOD_CONTROL, '2') != 0;
+    HealthHotkeyRegistered = RegisterHotKey(hwnd, HealthHotkeyId, MOD_CONTROL, '3') != 0;
     const bool addPlanesRegistered = RegisterHotKey(hwnd, AddPlanesHotkeyId, MOD_CONTROL | MOD_SHIFT, '1') != 0;
     const bool addNukesRegistered = RegisterHotKey(hwnd, AddNukesHotkeyId, MOD_CONTROL | MOD_SHIFT, '2') != 0;
     const bool addHealthRegistered = RegisterHotKey(hwnd, AddHealthHotkeyId, MOD_CONTROL | MOD_SHIFT, '3') != 0;
 
-    if (!infinitePlanesHotkeyRegistered || !infiniteNukesHotkeyRegistered || !infiniteHealthHotkeyRegistered
+    if (!PlanesHotkeyRegistered || !NukesHotkeyRegistered || !HealthHotkeyRegistered
         || !addPlanesRegistered || !addNukesRegistered || !addHealthRegistered) {
         unregisterGlobalHotkeys();
         return false;
@@ -351,19 +351,19 @@ void MainWindow::unregisterGlobalHotkeys()
 {
     const auto hwnd = reinterpret_cast<HWND>(winId());
 
-    if (infinitePlanesHotkeyRegistered) {
-        UnregisterHotKey(hwnd, InfinitePlanesHotkeyId);
-        infinitePlanesHotkeyRegistered = false;
+    if (PlanesHotkeyRegistered) {
+        UnregisterHotKey(hwnd, PlanesHotkeyId);
+        PlanesHotkeyRegistered = false;
     }
 
-    if (infiniteNukesHotkeyRegistered) {
-        UnregisterHotKey(hwnd, InfiniteNukesHotkeyId);
-        infiniteNukesHotkeyRegistered = false;
+    if (NukesHotkeyRegistered) {
+        UnregisterHotKey(hwnd, NukesHotkeyId);
+        NukesHotkeyRegistered = false;
     }
 
-    if (infiniteHealthHotkeyRegistered) {
-        UnregisterHotKey(hwnd, InfiniteHealthHotkeyId);
-        infiniteHealthHotkeyRegistered = false;
+    if (HealthHotkeyRegistered) {
+        UnregisterHotKey(hwnd, HealthHotkeyId);
+        HealthHotkeyRegistered = false;
     }
 
     UnregisterHotKey(hwnd, AddPlanesHotkeyId);
@@ -385,20 +385,20 @@ bool MainWindow::nativeEvent(const QByteArray &eventType, void *message, qintptr
     }
 
     switch (static_cast<int>(msg->wParam)) {
-    case InfinitePlanesHotkeyId:
-        toggleInfinitePlanes();
+    case PlanesHotkeyId:
+        togglePlanes();
         if (result != nullptr) {
             *result = 0;
         }
         return true;
-    case InfiniteNukesHotkeyId:
-        toggleInfiniteNukes();
+    case NukesHotkeyId:
+        toggleNukes();
         if (result != nullptr) {
             *result = 0;
         }
         return true;
-    case InfiniteHealthHotkeyId:
-        toggleInfiniteHealth();
+    case HealthHotkeyId:
+        toggleHealth();
         if (result != nullptr) {
             *result = 0;
         }

@@ -1,4 +1,4 @@
-# DemonStar trainer core
+﻿# DemonStar trainer core
 
 This directory is a copyable C++17 trainer module. It has no Qt dependency.
 
@@ -36,14 +36,14 @@ trainer.setListener(&listener);
 // Call periodically, for example every 100 ms.
 trainer.tick();
 
-trainer.addCheatValue(demonstar::CheatId::InfinitePlanes, 5);
-trainer.addCheatValue(demonstar::CheatId::InfiniteNukes, 5);
-trainer.addCheatValue(demonstar::CheatId::InfiniteHealth, 160);
+trainer.addValue(demonstar::TrainerValueId::Planes, 5);
+trainer.addValue(demonstar::TrainerValueId::Nukes, 5);
+trainer.addValue(demonstar::TrainerValueId::Health, 160);
 
 // Lock the current in-game values. While locked, tick() writes the locked value
-// back whenever the game value changes. Calling addCheatValue while locked also
+// back whenever the game value changes. Calling addValue while locked also
 // raises the locked value.
-trainer.setCheatEnabled(demonstar::CheatId::InfinitePlanes, true);
+trainer.setValueLocked(demonstar::TrainerValueId::Planes, true);
 
 trainer.shutdown();
 ```

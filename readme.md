@@ -1,4 +1,4 @@
-# DemonStar Trainer
+﻿# DemonStar Trainer
 
 DemonStar Trainer 是一个面向 DemonStar 单人模式的 Windows 修改器。当前项目由两层组成：
 
@@ -99,8 +99,8 @@ demonstar::DemonStarTrainer trainer;
 trainer.setListener(&listener);
 
 trainer.tick(); // 建议每 100 ms 调用一次
-trainer.addCheatValue(demonstar::CheatId::InfinitePlanes, 5);
-trainer.setCheatEnabled(demonstar::CheatId::InfinitePlanes, true); // 锁定当前飞机数量
+trainer.addValue(demonstar::TrainerValueId::Planes, 5);
+trainer.setValueLocked(demonstar::TrainerValueId::Planes, true); // 锁定当前飞机数量
 ```
 
 ## 偏移量
