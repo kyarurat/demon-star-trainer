@@ -13,6 +13,7 @@ public:
     virtual void setListener(ITrainerListener *listener) = 0;
     virtual void tick() = 0;
     virtual bool setCheatEnabled(CheatId cheat, bool enabled) = 0;
+    virtual bool addCheatValue(CheatId cheat, int amount) = 0;
     virtual bool isCheatEnabled(CheatId cheat) const = 0;
     virtual bool isGameAvailable() const = 0;
     virtual void shutdown() = 0;

@@ -2,7 +2,8 @@
 
 #include "WinProcessMemory.h"
 
-#include <cassert>
+#include <limits>
+#include <stdexcept>
 
 namespace demonstar {
 namespace {
@@ -10,8 +11,6 @@ namespace {
 constexpr std::uintptr_t InfiniteHealthOffset = 0x14C7950;
 constexpr std::uintptr_t InfinitePlanesOffset = 0x14C7954;
 constexpr std::uintptr_t InfiniteNukesOffset = 0x14C80E4;
-constexpr std::int32_t InfiniteHealthLockedValue = 160;
-constexpr std::int32_t CheatValueLimit = 10;
 constexpr wchar_t ProcessName[] = L"demonstar.exe";
 
 const char *cheatName(CheatId cheat)
@@ -30,6 +29,22 @@ const char *cheatName(CheatId cheat)
     return "修改项";
 }
 
+std::uintptr_t offsetFor(CheatId cheat)
+{
+    switch (cheat) {
+    case CheatId::InfinitePlanes:
+        return InfinitePlanesOffset;
+    case CheatId::InfiniteNukes:
+        return InfiniteNukesOffset;
+    case CheatId::InfiniteHealth:
+        return InfiniteHealthOffset;
+    case CheatId::None:
+        break;
+    }
+
+    return 0;
+}
+
 } // namespace
 
 DemonStarTrainer::DemonStarTrainer()
@@ -40,7 +55,9 @@ DemonStarTrainer::DemonStarTrainer()
 DemonStarTrainer::DemonStarTrainer(std::unique_ptr<IProcessMemory> processMemory)
     : processMemory_(std::move(processMemory))
 {
-    assert(processMemory_ != nullptr);
+    if (processMemory_ == nullptr) {
+        processMemory_ = std::make_unique<WinProcessMemory>();
+    }
 }
 
 DemonStarTrainer::~DemonStarTrainer()
@@ -99,7 +116,7 @@ void DemonStarTrainer::tick()
 
 bool DemonStarTrainer::setCheatEnabled(CheatId cheat, bool enabled)
 {
-    if (cheat == CheatId::None) {
+    if (!isValidCheat(cheat)) {
         return false;
     }
 
@@ -114,10 +131,19 @@ bool DemonStarTrainer::setCheatEnabled(CheatId cheat, bool enabled)
             return false;
         }
 
+        std::int32_t currentValue = 0;
+        if (!readValue(cheat, currentValue)) {
+            handleMemoryAccessFailed(cheat,
+                                     TrainerEventType::ReadFailed,
+                                     std::string("读取") + cheatName(cheat) + "失败，修改项已关闭");
+            return false;
+        }
+
         gameAvailable_ = true;
         state.enabled = true;
-        notify(TrainerEventType::CheatEnabled, cheat, std::string(cheatName(cheat)) + "已开启");
-        updateCheat(cheat);
+        state.hasLockedValue = true;
+        state.lockedValue = currentValue;
+        notify(TrainerEventType::CheatLocked, cheat, std::string(cheatName(cheat)) + "已锁定到 " + std::to_string(currentValue), currentValue);
         return state.enabled;
     }
 
@@ -130,9 +156,57 @@ bool DemonStarTrainer::setCheatEnabled(CheatId cheat, bool enabled)
     return true;
 }
 
+bool DemonStarTrainer::addCheatValue(CheatId cheat, int amount)
+{
+    if (!isValidCheat(cheat) || amount <= 0) {
+        return false;
+    }
+
+    if (!ensureGameProcess()) {
+        gameAvailable_ = false;
+        notify(TrainerEventType::AttachFailed, cheat, std::string("游戏未启动，无法增加") + cheatName(cheat));
+        return false;
+    }
+
+    LockState &state = stateFor(cheat);
+    std::int32_t currentValue = 0;
+    if (!readValue(cheat, currentValue)) {
+        handleMemoryAccessFailed(cheat,
+                                 TrainerEventType::ReadFailed,
+                                 std::string("读取") + cheatName(cheat) + "失败，无法增加");
+        return false;
+    }
+
+    const std::int32_t baseValue = state.enabled && state.hasLockedValue ? state.lockedValue : currentValue;
+    const auto calculatedValue = static_cast<std::int64_t>(baseValue) + static_cast<std::int64_t>(amount);
+    if (calculatedValue > std::numeric_limits<std::int32_t>::max()) {
+        notify(TrainerEventType::WriteFailed, cheat, std::string(cheatName(cheat)) + "数值超出范围，未写入");
+        return false;
+    }
+
+    const auto newValue = static_cast<std::int32_t>(calculatedValue);
+    if (!writeValue(cheat, newValue)) {
+        handleMemoryAccessFailed(cheat,
+                                 TrainerEventType::WriteFailed,
+                                 std::string("写入") + cheatName(cheat) + "失败，修改项已关闭");
+        return false;
+    }
+
+    gameAvailable_ = true;
+    if (state.enabled) {
+        state.lockedValue = newValue;
+        state.hasLockedValue = true;
+        notify(TrainerEventType::LockUpdated, cheat, std::string(cheatName(cheat)) + "已增加并锁定到 " + std::to_string(newValue), newValue);
+    } else {
+        notify(TrainerEventType::ValueAdded, cheat, std::string(cheatName(cheat)) + "已增加到 " + std::to_string(newValue), newValue);
+    }
+
+    return true;
+}
+
 bool DemonStarTrainer::isCheatEnabled(CheatId cheat) const
 {
-    if (cheat == CheatId::None) {
+    if (!isValidCheat(cheat)) {
         return false;
     }
 
@@ -180,99 +254,51 @@ void DemonStarTrainer::handleDetached(bool restarted)
            restarted ? "游戏进程已重启，修改项已关闭" : "游戏未启动或已退出，修改项已关闭");
 }
 
+void DemonStarTrainer::handleMemoryAccessFailed(CheatId cheat, TrainerEventType type, const std::string &message)
+{
+    if (!processMemory_->isAttached()) {
+        handleDetached(false);
+        return;
+    }
+
+    disableAllCheats();
+    notify(type, CheatId::None, message);
+}
+
 void DemonStarTrainer::updateCheat(CheatId cheat)
 {
-    switch (cheat) {
-    case CheatId::InfinitePlanes:
-        updateLimitedLock(cheat, planes_, InfinitePlanesOffset);
-        break;
-    case CheatId::InfiniteNukes:
-        updateLimitedLock(cheat, nukes_, InfiniteNukesOffset);
-        break;
-    case CheatId::InfiniteHealth:
-        updateHealth();
-        break;
-    case CheatId::None:
-        break;
-    }
+    updateLockedValue(cheat);
 }
 
-void DemonStarTrainer::updateLimitedLock(CheatId cheat, LockState &state, std::uintptr_t offset)
+void DemonStarTrainer::updateLockedValue(CheatId cheat)
 {
     if (!ensureGameProcess()) {
         handleDetached(false);
         return;
     }
 
-    std::int32_t currentValue = 0;
-    if (!processMemory_->readInt32(offset, currentValue)) {
-        resetState(cheat);
-        state.enabled = false;
-        notify(TrainerEventType::ReadFailed, cheat, std::string("读取") + cheatName(cheat) + "失败，修改项已关闭");
-        return;
-    }
-
-    if (currentValue > CheatValueLimit) {
-        state.hasLockedValue = false;
-        if (!state.pausedAboveLimit) {
-            state.pausedAboveLimit = true;
-            notify(TrainerEventType::CheatPaused, cheat, std::string(cheatName(cheat)) + "数值超过 10，暂停写入");
-        }
-        return;
-    }
-
-    if (!state.hasLockedValue || state.pausedAboveLimit) {
-        state.lockedValue = currentValue;
-        state.hasLockedValue = true;
-        state.pausedAboveLimit = false;
-        notify(TrainerEventType::CheatLocked, cheat, std::string(cheatName(cheat)) + "已锁定");
-        return;
-    }
-
-    if (currentValue < state.lockedValue) {
-        if (!processMemory_->writeInt32(offset, state.lockedValue)) {
-            resetState(cheat);
-            state.enabled = false;
-            notify(TrainerEventType::WriteFailed, cheat, std::string("写入") + cheatName(cheat) + "失败，修改项已关闭");
-        }
-        return;
-    }
-
-    if (currentValue > state.lockedValue) {
-        state.lockedValue = currentValue;
-    }
-}
-
-void DemonStarTrainer::updateHealth()
-{
-    if (!ensureGameProcess()) {
-        handleDetached(false);
+    LockState &state = stateFor(cheat);
+    if (!state.enabled || !state.hasLockedValue) {
         return;
     }
 
     std::int32_t currentValue = 0;
-    if (!processMemory_->readInt32(InfiniteHealthOffset, currentValue)) {
-        resetState(CheatId::InfiniteHealth);
-        health_.enabled = false;
-        notify(TrainerEventType::ReadFailed, CheatId::InfiniteHealth, "读取无限生命值失败，修改项已关闭");
+    if (!readValue(cheat, currentValue)) {
+        handleMemoryAccessFailed(cheat,
+                                 TrainerEventType::ReadFailed,
+                                 std::string("读取") + cheatName(cheat) + "失败，修改项已关闭");
         return;
     }
 
-    if (!health_.hasLockedValue) {
-        health_.lockedValue = InfiniteHealthLockedValue;
-        health_.hasLockedValue = true;
-        notify(TrainerEventType::CheatLocked, CheatId::InfiniteHealth, "无限生命值已锁定");
-    }
-
-    if (currentValue < health_.lockedValue
-        && !processMemory_->writeInt32(InfiniteHealthOffset, health_.lockedValue)) {
-        resetState(CheatId::InfiniteHealth);
-        health_.enabled = false;
-        notify(TrainerEventType::WriteFailed, CheatId::InfiniteHealth, "写入无限生命值失败，修改项已关闭");
+    if (currentValue == state.lockedValue) {
         return;
     }
 
-    health_.lockedValue = InfiniteHealthLockedValue;
+    if (!writeValue(cheat, state.lockedValue)) {
+        handleMemoryAccessFailed(cheat,
+                                 TrainerEventType::WriteFailed,
+                                 std::string("写入") + cheatName(cheat) + "失败，修改项已关闭");
+    }
 }
 
 void DemonStarTrainer::resetState(CheatId cheat)
@@ -290,14 +316,31 @@ void DemonStarTrainer::disableAllCheats()
     health_ = {};
 }
 
-void DemonStarTrainer::notify(TrainerEventType type, CheatId cheat, const std::string &message)
+void DemonStarTrainer::notify(TrainerEventType type, CheatId cheat, const std::string &message, int value)
 {
     if (listener_ == nullptr) {
         return;
     }
 
     const bool enabled = cheat != CheatId::None && isCheatEnabled(cheat);
-    listener_->onTrainerEvent({type, cheat, message, gameAvailable_, enabled});
+    listener_->onTrainerEvent({type, cheat, message, gameAvailable_, enabled, value});
+}
+
+bool DemonStarTrainer::isValidCheat(CheatId cheat) const
+{
+    return cheat == CheatId::InfinitePlanes || cheat == CheatId::InfiniteNukes || cheat == CheatId::InfiniteHealth;
+}
+
+bool DemonStarTrainer::readValue(CheatId cheat, std::int32_t &value) const
+{
+    const std::uintptr_t offset = offsetFor(cheat);
+    return offset != 0 && processMemory_->readInt32(offset, value);
+}
+
+bool DemonStarTrainer::writeValue(CheatId cheat, std::int32_t value) const
+{
+    const std::uintptr_t offset = offsetFor(cheat);
+    return offset != 0 && processMemory_->writeInt32(offset, value);
 }
 
 DemonStarTrainer::LockState &DemonStarTrainer::stateFor(CheatId cheat)
@@ -313,7 +356,7 @@ DemonStarTrainer::LockState &DemonStarTrainer::stateFor(CheatId cheat)
         break;
     }
 
-    return planes_;
+    throw std::invalid_argument("invalid cheat id");
 }
 
 const DemonStarTrainer::LockState &DemonStarTrainer::stateFor(CheatId cheat) const
@@ -329,7 +372,7 @@ const DemonStarTrainer::LockState &DemonStarTrainer::stateFor(CheatId cheat) con
         break;
     }
 
-    return planes_;
+    throw std::invalid_argument("invalid cheat id");
 }
 
 } // namespace demonstar

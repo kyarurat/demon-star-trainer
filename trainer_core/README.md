@@ -36,9 +36,14 @@ trainer.setListener(&listener);
 // Call periodically, for example every 100 ms.
 trainer.tick();
 
+trainer.addCheatValue(demonstar::CheatId::InfinitePlanes, 5);
+trainer.addCheatValue(demonstar::CheatId::InfiniteNukes, 5);
+trainer.addCheatValue(demonstar::CheatId::InfiniteHealth, 160);
+
+// Lock the current in-game values. While locked, tick() writes the locked value
+// back whenever the game value changes. Calling addCheatValue while locked also
+// raises the locked value.
 trainer.setCheatEnabled(demonstar::CheatId::InfinitePlanes, true);
-trainer.setCheatEnabled(demonstar::CheatId::InfiniteNukes, true);
-trainer.setCheatEnabled(demonstar::CheatId::InfiniteHealth, true);
 
 trainer.shutdown();
 ```

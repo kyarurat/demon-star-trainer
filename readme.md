@@ -8,9 +8,9 @@ DemonStar Trainer 是一个面向 DemonStar 单人模式的 Windows 修改器。
 ## 功能
 
 - 自动检测本机运行中的 `demonstar.exe`
-- 无限飞机，快捷键 `Ctrl+1`
-- 无限核弹，快捷键 `Ctrl+2`
-- 无限生命值，快捷键 `Ctrl+3`
+- 飞机数量增加与锁定：`Ctrl+Shift+1` 增加，`Ctrl+1` 切换锁定
+- 核弹数量增加与锁定：`Ctrl+Shift+2` 增加，`Ctrl+2` 切换锁定
+- 生命值增加与锁定：`Ctrl+Shift+3` 增加，`Ctrl+3` 切换锁定
 - 游戏退出或进程重启后自动关闭已启用的修改项
 
 ## 项目结构
@@ -66,7 +66,14 @@ cmake --build build\Desktop_Qt_6_11_0_MinGW_64_bit-Debug --config Debug
 
 1. 启动 DemonStar，并确保进程名为 `demonstar.exe`。
 2. 启动 `DemonStarTrainer`。
-3. 在窗口中勾选需要的修改项，或使用 `Ctrl+1`、`Ctrl+2`、`Ctrl+3` 切换。
+3. 在每个项目的输入框中设置每次增加的数值。
+4. 点击“增加”会把游戏当前值增加输入框中的数值；默认飞机 `+5`，核弹 `+5`，生命值 `+160`。
+5. 勾选“锁定”会读取当前游戏值并锁定到该值；锁定后如果点击“增加”，锁定值也会同步增加。
+
+快捷键：
+
+- `Ctrl+1`、`Ctrl+2`、`Ctrl+3`：切换飞机、核弹、生命值锁定
+- `Ctrl+Shift+1`、`Ctrl+Shift+2`、`Ctrl+Shift+3`：增加飞机、核弹、生命值
 
 ## 复用修改核心
 
@@ -92,7 +99,8 @@ demonstar::DemonStarTrainer trainer;
 trainer.setListener(&listener);
 
 trainer.tick(); // 建议每 100 ms 调用一次
-trainer.setCheatEnabled(demonstar::CheatId::InfinitePlanes, true);
+trainer.addCheatValue(demonstar::CheatId::InfinitePlanes, 5);
+trainer.setCheatEnabled(demonstar::CheatId::InfinitePlanes, true); // 锁定当前飞机数量
 ```
 
 ## 偏移量

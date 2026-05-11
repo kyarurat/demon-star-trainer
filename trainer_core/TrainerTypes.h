@@ -19,7 +19,8 @@ enum class TrainerEventType {
     CheatEnabled,
     CheatDisabled,
     CheatLocked,
-    CheatPaused,
+    LockUpdated,
+    ValueAdded,
     ReadFailed,
     WriteFailed,
     AttachFailed
@@ -31,6 +32,7 @@ struct TrainerEvent {
     std::string message;
     bool gameAvailable = false;
     bool cheatEnabled = false;
+    int value = 0;
 };
 
 } // namespace demonstar

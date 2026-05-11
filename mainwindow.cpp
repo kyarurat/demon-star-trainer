@@ -7,8 +7,10 @@
 
 #include <QCheckBox>
 #include <QKeySequence>
+#include <QPushButton>
 #include <QShortcut>
 #include <QSignalBlocker>
+#include <QSpinBox>
 #include <QStatusBar>
 #include <QString>
 #include <QTimer>
@@ -27,6 +29,9 @@ constexpr int TrainerPollIntervalMs = 100;
 constexpr int InfinitePlanesHotkeyId = 0x4401;
 constexpr int InfiniteNukesHotkeyId = 0x4402;
 constexpr int InfiniteHealthHotkeyId = 0x4403;
+constexpr int AddPlanesHotkeyId = 0x4411;
+constexpr int AddNukesHotkeyId = 0x4412;
+constexpr int AddHealthHotkeyId = 0x4413;
 #endif
 
 QString toQString(const std::string &text)
@@ -43,9 +48,18 @@ MainWindow::MainWindow(QWidget *parent)
     ui->gameStatusGroupBox->setTitle(QStringLiteral("游戏状态"));
     ui->gameStatusTitleLabel->setText(QStringLiteral("当前状态："));
     ui->cheatsGroupBox->setTitle(QStringLiteral("修改功能"));
-    ui->infinitePlanesCheckBox->setText(QStringLiteral("无限飞机 (Ctrl+1)"));
-    ui->infiniteNukesCheckBox->setText(QStringLiteral("无限核弹 (Ctrl+2)"));
-    ui->infiniteHealthCheckBox->setText(QStringLiteral("无限生命值 (Ctrl+3)"));
+    ui->planesTitleLabel->setText(QStringLiteral("飞机数量"));
+    ui->nukesTitleLabel->setText(QStringLiteral("核弹数量"));
+    ui->healthTitleLabel->setText(QStringLiteral("生命值"));
+    ui->planesAmountSpinBox->setValue(5);
+    ui->nukesAmountSpinBox->setValue(5);
+    ui->healthAmountSpinBox->setValue(160);
+    ui->addPlanesButton->setText(QStringLiteral("增加 (Ctrl+Shift+1)"));
+    ui->addNukesButton->setText(QStringLiteral("增加 (Ctrl+Shift+2)"));
+    ui->addHealthButton->setText(QStringLiteral("增加 (Ctrl+Shift+3)"));
+    ui->infinitePlanesCheckBox->setText(QStringLiteral("锁定 (Ctrl+1)"));
+    ui->infiniteNukesCheckBox->setText(QStringLiteral("锁定 (Ctrl+2)"));
+    ui->infiniteHealthCheckBox->setText(QStringLiteral("锁定 (Ctrl+3)"));
 
 #ifdef Q_OS_WIN
     trainer = std::make_unique<demonstar::DemonStarTrainer>();
@@ -55,12 +69,15 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->infinitePlanesCheckBox, &QCheckBox::toggled, this, &MainWindow::applyInfinitePlanes);
     connect(ui->infiniteNukesCheckBox, &QCheckBox::toggled, this, &MainWindow::applyInfiniteNukes);
     connect(ui->infiniteHealthCheckBox, &QCheckBox::toggled, this, &MainWindow::applyInfiniteHealth);
+    connect(ui->addPlanesButton, &QPushButton::clicked, this, &MainWindow::increasePlanes);
+    connect(ui->addNukesButton, &QPushButton::clicked, this, &MainWindow::increaseNukes);
+    connect(ui->addHealthButton, &QPushButton::clicked, this, &MainWindow::increaseHealth);
 
     setGameAvailable(false);
     setupHotkeys();
     setupTrainerTimer();
     updateTrainer();
-    statusBar()->showMessage(QStringLiteral("Ctrl+1 切换无限飞机，Ctrl+2 切换无限核弹，Ctrl+3 切换无限生命值"));
+    statusBar()->showMessage(QStringLiteral("Ctrl+1/2/3 切换锁定，Ctrl+Shift+1/2/3 增加数值"));
 }
 
 MainWindow::~MainWindow()
@@ -113,6 +130,18 @@ void MainWindow::setupLocalHotkeys()
     auto *healthShortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+3")), this);
     healthShortcut->setContext(Qt::ApplicationShortcut);
     connect(healthShortcut, &QShortcut::activated, this, &MainWindow::toggleInfiniteHealth);
+
+    auto *addPlanesShortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+1")), this);
+    addPlanesShortcut->setContext(Qt::ApplicationShortcut);
+    connect(addPlanesShortcut, &QShortcut::activated, this, &MainWindow::increasePlanes);
+
+    auto *addNukesShortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+2")), this);
+    addNukesShortcut->setContext(Qt::ApplicationShortcut);
+    connect(addNukesShortcut, &QShortcut::activated, this, &MainWindow::increaseNukes);
+
+    auto *addHealthShortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+3")), this);
+    addHealthShortcut->setContext(Qt::ApplicationShortcut);
+    connect(addHealthShortcut, &QShortcut::activated, this, &MainWindow::increaseHealth);
 }
 
 void MainWindow::setupTrainerTimer()
@@ -144,6 +173,42 @@ void MainWindow::setGameAvailable(bool available)
                                                 : QStringLiteral("未启动，修改已禁用"));
     ui->gameStatusValueLabel->setStyleSheet(available ? QStringLiteral("color: #1f7a3f; font-weight: 600;")
                                                       : QStringLiteral("color: #a33; font-weight: 600;"));
+}
+
+void MainWindow::increasePlanes()
+{
+    if (!trainer || !trainer->isGameAvailable()) {
+        statusBar()->showMessage(QStringLiteral("请先启动 demonstar.exe"), 2000);
+        return;
+    }
+
+    trainer->addCheatValue(demonstar::CheatId::InfinitePlanes, ui->planesAmountSpinBox->value());
+    syncCheatCheckbox(demonstar::CheatId::InfinitePlanes,
+                      trainer->isCheatEnabled(demonstar::CheatId::InfinitePlanes));
+}
+
+void MainWindow::increaseNukes()
+{
+    if (!trainer || !trainer->isGameAvailable()) {
+        statusBar()->showMessage(QStringLiteral("请先启动 demonstar.exe"), 2000);
+        return;
+    }
+
+    trainer->addCheatValue(demonstar::CheatId::InfiniteNukes, ui->nukesAmountSpinBox->value());
+    syncCheatCheckbox(demonstar::CheatId::InfiniteNukes,
+                      trainer->isCheatEnabled(demonstar::CheatId::InfiniteNukes));
+}
+
+void MainWindow::increaseHealth()
+{
+    if (!trainer || !trainer->isGameAvailable()) {
+        statusBar()->showMessage(QStringLiteral("请先启动 demonstar.exe"), 2000);
+        return;
+    }
+
+    trainer->addCheatValue(demonstar::CheatId::InfiniteHealth, ui->healthAmountSpinBox->value());
+    syncCheatCheckbox(demonstar::CheatId::InfiniteHealth,
+                      trainer->isCheatEnabled(demonstar::CheatId::InfiniteHealth));
 }
 
 void MainWindow::syncCheatCheckbox(demonstar::CheatId cheat, bool enabled)
@@ -269,8 +334,12 @@ bool MainWindow::registerGlobalHotkeys()
     infinitePlanesHotkeyRegistered = RegisterHotKey(hwnd, InfinitePlanesHotkeyId, MOD_CONTROL, '1') != 0;
     infiniteNukesHotkeyRegistered = RegisterHotKey(hwnd, InfiniteNukesHotkeyId, MOD_CONTROL, '2') != 0;
     infiniteHealthHotkeyRegistered = RegisterHotKey(hwnd, InfiniteHealthHotkeyId, MOD_CONTROL, '3') != 0;
+    const bool addPlanesRegistered = RegisterHotKey(hwnd, AddPlanesHotkeyId, MOD_CONTROL | MOD_SHIFT, '1') != 0;
+    const bool addNukesRegistered = RegisterHotKey(hwnd, AddNukesHotkeyId, MOD_CONTROL | MOD_SHIFT, '2') != 0;
+    const bool addHealthRegistered = RegisterHotKey(hwnd, AddHealthHotkeyId, MOD_CONTROL | MOD_SHIFT, '3') != 0;
 
-    if (!infinitePlanesHotkeyRegistered || !infiniteNukesHotkeyRegistered || !infiniteHealthHotkeyRegistered) {
+    if (!infinitePlanesHotkeyRegistered || !infiniteNukesHotkeyRegistered || !infiniteHealthHotkeyRegistered
+        || !addPlanesRegistered || !addNukesRegistered || !addHealthRegistered) {
         unregisterGlobalHotkeys();
         return false;
     }
@@ -296,6 +365,10 @@ void MainWindow::unregisterGlobalHotkeys()
         UnregisterHotKey(hwnd, InfiniteHealthHotkeyId);
         infiniteHealthHotkeyRegistered = false;
     }
+
+    UnregisterHotKey(hwnd, AddPlanesHotkeyId);
+    UnregisterHotKey(hwnd, AddNukesHotkeyId);
+    UnregisterHotKey(hwnd, AddHealthHotkeyId);
 }
 
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
@@ -326,6 +399,24 @@ bool MainWindow::nativeEvent(const QByteArray &eventType, void *message, qintptr
         return true;
     case InfiniteHealthHotkeyId:
         toggleInfiniteHealth();
+        if (result != nullptr) {
+            *result = 0;
+        }
+        return true;
+    case AddPlanesHotkeyId:
+        increasePlanes();
+        if (result != nullptr) {
+            *result = 0;
+        }
+        return true;
+    case AddNukesHotkeyId:
+        increaseNukes();
+        if (result != nullptr) {
+            *result = 0;
+        }
+        return true;
+    case AddHealthHotkeyId:
+        increaseHealth();
         if (result != nullptr) {
             *result = 0;
         }

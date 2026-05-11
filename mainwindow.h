@@ -37,6 +37,9 @@ private:
     void toggleInfinitePlanes();
     void toggleInfiniteNukes();
     void toggleInfiniteHealth();
+    void increasePlanes();
+    void increaseNukes();
+    void increaseHealth();
     void applyInfinitePlanes(bool enabled);
     void applyInfiniteNukes(bool enabled);
     void applyInfiniteHealth(bool enabled);

@@ -68,25 +68,106 @@
       <property name="title">
        <string>修改功能</string>
       </property>
-      <layout class="QVBoxLayout" name="cheatsLayout">
-       <item>
+      <layout class="QGridLayout" name="cheatsLayout">
+       <item row="0" column="0">
+        <widget class="QLabel" name="planesTitleLabel">
+         <property name="text">
+          <string>飞机数量</string>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="1">
+        <widget class="QSpinBox" name="planesAmountSpinBox">
+         <property name="minimum">
+          <number>1</number>
+         </property>
+         <property name="maximum">
+          <number>9999</number>
+         </property>
+         <property name="value">
+          <number>5</number>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="2">
+        <widget class="QPushButton" name="addPlanesButton">
+         <property name="text">
+          <string>增加 (Ctrl+Shift+1)</string>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="3">
         <widget class="QCheckBox" name="infinitePlanesCheckBox">
          <property name="text">
-          <string>无限飞机 (Ctrl+1)</string>
+          <string>锁定 (Ctrl+1)</string>
          </property>
         </widget>
        </item>
-       <item>
+       <item row="1" column="0">
+        <widget class="QLabel" name="nukesTitleLabel">
+         <property name="text">
+          <string>核弹数量</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="1">
+        <widget class="QSpinBox" name="nukesAmountSpinBox">
+         <property name="minimum">
+          <number>1</number>
+         </property>
+         <property name="maximum">
+          <number>9999</number>
+         </property>
+         <property name="value">
+          <number>5</number>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="2">
+        <widget class="QPushButton" name="addNukesButton">
+         <property name="text">
+          <string>增加 (Ctrl+Shift+2)</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="3">
         <widget class="QCheckBox" name="infiniteNukesCheckBox">
          <property name="text">
-          <string>无限核弹 (Ctrl+2)</string>
+          <string>锁定 (Ctrl+2)</string>
          </property>
         </widget>
        </item>
-       <item>
+       <item row="2" column="0">
+        <widget class="QLabel" name="healthTitleLabel">
+         <property name="text">
+          <string>生命值</string>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="1">
+        <widget class="QSpinBox" name="healthAmountSpinBox">
+         <property name="minimum">
+          <number>1</number>
+         </property>
+         <property name="maximum">
+          <number>9999</number>
+         </property>
+         <property name="value">
+          <number>160</number>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="2">
+        <widget class="QPushButton" name="addHealthButton">
+         <property name="text">
+          <string>增加 (Ctrl+Shift+3)</string>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="3">
         <widget class="QCheckBox" name="infiniteHealthCheckBox">
          <property name="text">
-          <string>无限生命值 (Ctrl+3)</string>
+          <string>锁定 (Ctrl+3)</string>
          </property>
         </widget>
        </item>
