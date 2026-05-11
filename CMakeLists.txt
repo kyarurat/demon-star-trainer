@@ -17,7 +17,20 @@ set(PROJECT_SOURCES
         mainwindow.cpp
         mainwindow.h
         mainwindow.ui
+        trainer_core/IProcessMemory.h
+        trainer_core/ITrainer.h
+        trainer_core/ITrainerListener.h
+        trainer_core/TrainerTypes.h
 )
+
+if(WIN32)
+    list(APPEND PROJECT_SOURCES
+        trainer_core/DemonStarTrainer.cpp
+        trainer_core/DemonStarTrainer.h
+        trainer_core/WinProcessMemory.cpp
+        trainer_core/WinProcessMemory.h
+    )
+endif()
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
     qt_add_executable(DemonStarTrainer

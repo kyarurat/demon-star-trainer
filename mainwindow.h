@@ -1,9 +1,13 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include "trainer_core/ITrainer.h"
+
 #include <QByteArray>
 #include <QMainWindow>
 #include <QtGlobal>
+
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 class QTimer;
@@ -12,7 +16,7 @@ class MainWindow;
 }
 QT_END_NAMESPACE
 
-class MainWindow : public QMainWindow
+class MainWindow : public QMainWindow, public demonstar::ITrainerListener
 {
     Q_OBJECT
 
@@ -20,13 +24,16 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
 
+    void onTrainerEvent(const demonstar::TrainerEvent &event) override;
+
 private:
     void setupHotkeys();
     void setupLocalHotkeys();
     void setupTrainerTimer();
     void updateTrainer();
     void setGameAvailable(bool available);
-    void disableCheats();
+    void syncCheatCheckbox(demonstar::CheatId cheat, bool enabled);
+    void syncAllCheatCheckboxes();
     void toggleInfinitePlanes();
     void toggleInfiniteNukes();
     void toggleInfiniteHealth();
@@ -35,21 +42,6 @@ private:
     void applyInfiniteHealth(bool enabled);
 
 #ifdef Q_OS_WIN
-    void updateInfinitePlanes();
-    void updateInfiniteNukes();
-    void updateInfiniteHealth();
-    void resetInfinitePlanesState();
-    void resetInfiniteNukesState();
-    void resetInfiniteHealthState();
-    bool ensureGameProcess();
-    void closeGameProcess();
-    bool readInfinitePlanesValue(qint32 *value) const;
-    bool writeInfinitePlanesValue(qint32 value) const;
-    bool readInfiniteNukesValue(qint32 *value) const;
-    bool writeInfiniteNukesValue(qint32 value) const;
-    bool readInfiniteHealthValue(qint32 *value) const;
-    bool writeInfiniteHealthValue(qint32 value) const;
-
 protected:
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     bool nativeEvent(const QByteArray &eventType, void *message, long *result) override;
@@ -61,25 +53,14 @@ private:
     bool registerGlobalHotkeys();
     void unregisterGlobalHotkeys();
 
-    void *gameProcessHandle = nullptr;
-    unsigned long gameProcessId = 0;
-    quintptr gameBaseAddress = 0;
-    qint32 infinitePlanesLockedValue = 0;
-    qint32 infiniteNukesLockedValue = 0;
-    qint32 infiniteHealthLockedValue = 0;
-    bool hasInfinitePlanesLockedValue = false;
-    bool hasInfiniteNukesLockedValue = false;
-    bool hasInfiniteHealthLockedValue = false;
-    bool infinitePlanesPausedAboveLimit = false;
-    bool infiniteNukesPausedAboveLimit = false;
-
     bool infinitePlanesHotkeyRegistered = false;
     bool infiniteNukesHotkeyRegistered = false;
     bool infiniteHealthHotkeyRegistered = false;
 #endif
 
     QTimer *trainerTimer = nullptr;
-    bool gameAvailable = false;
+    std::unique_ptr<demonstar::ITrainer> trainer;
     Ui::MainWindow *ui;
 };
+
 #endif // MAINWINDOW_H
