@@ -1,14 +1,14 @@
-﻿# DemonStar trainer core
+# DemonStar 修改器核心
 
-This directory is a copyable C++17 trainer module. It has no Qt dependency.
+这个目录是一组可以直接复制使用的 C++17 修改器核心代码，不依赖 Qt。
 
-## Dependencies
+## 依赖
 
 - Windows API
-- C++17 standard library
-- Link with `kernel32`
+- C++17 标准库
+- 链接 `kernel32`
 
-## Files to copy
+## 需要复制的文件
 
 - `TrainerTypes.h`
 - `ITrainerListener.h`
@@ -17,7 +17,7 @@ This directory is a copyable C++17 trainer module. It has no Qt dependency.
 - `WinProcessMemory.h/.cpp`
 - `DemonStarTrainer.h/.cpp`
 
-## Minimal usage
+## 最小使用示例
 
 ```cpp
 #include "trainer_core/DemonStarTrainer.h"
@@ -25,7 +25,8 @@ This directory is a copyable C++17 trainer module. It has no Qt dependency.
 class Listener : public demonstar::ITrainerListener {
 public:
     void onTrainerEvent(const demonstar::TrainerEvent &event) override {
-        // Show event.message in your UI/log and sync state from event fields.
+        // 可以把 event.message 显示到界面或日志里。
+        // 也可以根据 event.gameAvailable、event.valueId、event.locked 同步外部状态。
     }
 };
 
@@ -33,19 +34,31 @@ Listener listener;
 demonstar::DemonStarTrainer trainer;
 trainer.setListener(&listener);
 
-// Call periodically, for example every 100 ms.
+// 建议周期性调用，例如每 100 毫秒调用一次。
 trainer.tick();
 
+// 增加游戏内数值。
 trainer.addValue(demonstar::TrainerValueId::Planes, 5);
 trainer.addValue(demonstar::TrainerValueId::Nukes, 5);
 trainer.addValue(demonstar::TrainerValueId::Health, 160);
 
-// Lock the current in-game values. While locked, tick() writes the locked value
-// back whenever the game value changes. Calling addValue while locked also
-// raises the locked value.
+// 锁定当前游戏内数值。
+// 锁定后，tick() 会在数值变化时把它写回锁定值。
+// 如果锁定状态下调用 addValue()，锁定值也会同步增加。
 trainer.setValueLocked(demonstar::TrainerValueId::Planes, true);
 
+// 不再使用时释放进程句柄并关闭所有锁定。
 trainer.shutdown();
 ```
 
-The module targets `demonstar.exe` and uses the recorded single-player offsets in `DemonStarTrainer.cpp`.
+## 数值项
+
+- `TrainerValueId::Planes`：飞机数量
+- `TrainerValueId::Nukes`：核弹数量
+- `TrainerValueId::Health`：生命值
+
+## 说明
+
+核心模块会检测并附加到 `demonstar.exe`，实际读写地址使用 `DemonStarTrainer.cpp` 中记录的单人模式偏移量。
+
+如果游戏退出、进程重启或内存读写失败，核心会自动关闭锁定状态，并通过 `ITrainerListener` 通知外部程序同步界面状态。
