@@ -34,12 +34,16 @@ private:
     void setGameAvailable(bool available);
     void syncLockCheckbox(demonstar::TrainerValueId valueId, bool enabled);
     void syncAllLockCheckboxes();
+    void syncEasyModeControls();
+    demonstar::TrainerEasyModeLevel selectedEasyModeLevel() const;
     void togglePlanes();
     void toggleNukes();
     void toggleHealth();
     void increasePlanes();
     void increaseNukes();
     void increaseHealth();
+    void applyEasyMode(bool enabled);
+    void applyEasyModeLevel(int index);
     void applyPlanes(bool enabled);
     void applyNukes(bool enabled);
     void applyHealth(bool enabled);

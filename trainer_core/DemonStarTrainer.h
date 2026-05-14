@@ -12,6 +12,7 @@
 #include "IProcessMemory.h"
 #include "ITrainer.h"
 
+#include <chrono>
 #include <memory>
 
 namespace demonstar {
@@ -31,6 +32,8 @@ public:
     bool setValueLocked(TrainerValueId valueId, bool enabled) override;
     bool addValue(TrainerValueId valueId, int amount) override;
     bool isValueLocked(TrainerValueId valueId) const override;
+    bool setEasyModeLevel(TrainerEasyModeLevel level) override;
+    TrainerEasyModeLevel easyModeLevel() const override;
     bool isGameAvailable() const override;
     void shutdown() override;
 
@@ -57,6 +60,9 @@ private:
     // 更新单个锁定项，目前内部转发到 updateLockedValue。
     void updateValueLock(TrainerValueId valueId);
 
+    // 低难度模式轮询：按档位恢复核弹和生命值，并执行生命值上限。
+    void updateEasyMode();
+
     // 锁定轮询：如果游戏内当前值和 lockedValue 不一致，就写回 lockedValue。
     void updateLockedValue(TrainerValueId valueId);
 
@@ -65,6 +71,12 @@ private:
 
     // 关闭所有锁定项并清空锁定值。
     void disableAllLocks();
+
+    // 关闭低难度模式并清空恢复计时。
+    void disableEasyMode();
+
+    // 重置低难度模式的核弹、生命恢复计时。
+    void resetEasyModeTimers();
 
     // 向监听器发送事件；没有监听器时直接忽略。
     void notify(TrainerEventType type, TrainerValueId valueId, const std::string &message, int value = 0);
@@ -94,6 +106,11 @@ private:
     LockState planes_;
     LockState nukes_;
     LockState health_;
+    // 当前低难度模式档位。
+    TrainerEasyModeLevel easyModeLevel_ = TrainerEasyModeLevel::Off;
+    // 低难度模式核弹、生命恢复计时。
+    std::chrono::steady_clock::time_point easyLastNukeTick_{};
+    std::chrono::steady_clock::time_point easyLastHealthTick_{};
 };
 
 } // namespace demonstar

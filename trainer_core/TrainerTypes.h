@@ -22,6 +22,14 @@ enum class TrainerValueId {
     None
 };
 
+// 低难度模式档位。Off 表示关闭；其它档位会自动恢复核弹和生命值。
+enum class TrainerEasyModeLevel {
+    Off,
+    Low,
+    Medium,
+    High
+};
+
 // 修改器核心向外部 UI/日志层报告的事件类型。
 enum class TrainerEventType {
     // 已成功附加到 demonstar.exe。
@@ -43,7 +51,9 @@ enum class TrainerEventType {
     // 写入游戏内存失败，或写入前发现数值越界。
     WriteFailed,
     // 未能附加到游戏进程。
-    AttachFailed
+    AttachFailed,
+    // 低难度模式已开启、关闭或切换档位。
+    EasyModeChanged
 };
 
 // 事件载荷。UI 层只需要根据这里的状态同步控件和显示 message。

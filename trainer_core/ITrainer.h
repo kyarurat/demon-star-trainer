@@ -36,6 +36,12 @@ public:
     // 查询某项当前是否处于锁定状态。
     virtual bool isValueLocked(TrainerValueId valueId) const = 0;
 
+    // 设置低难度模式档位。Off 表示关闭；开启后会和严格锁定功能互斥。
+    virtual bool setEasyModeLevel(TrainerEasyModeLevel level) = 0;
+
+    // 查询当前低难度模式档位。
+    virtual TrainerEasyModeLevel easyModeLevel() const = 0;
+
     // 查询核心当前是否认为 demonstar.exe 可用。
     virtual bool isGameAvailable() const = 0;
 

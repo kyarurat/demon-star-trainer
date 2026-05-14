@@ -21,6 +21,8 @@ constexpr std::uintptr_t HealthOffset = 0x14C7950;
 constexpr std::uintptr_t PlanesOffset = 0x14C7954;
 constexpr std::uintptr_t NukesOffset = 0x14C80E4;
 constexpr wchar_t ProcessName[] = L"demonstar.exe";
+constexpr std::int32_t EasyModeNukeLimit = 5;
+constexpr std::int32_t EasyModeHealthLimit = 160;
 
 // 将内部枚举转换成用户可读的中文名称，用于事件 message。
 const char *valueName(TrainerValueId valueId)
@@ -37,6 +39,67 @@ const char *valueName(TrainerValueId valueId)
     }
 
     return "修改项";
+}
+
+const char *easyModeName(TrainerEasyModeLevel level)
+{
+    switch (level) {
+    case TrainerEasyModeLevel::Off:
+        return "关闭";
+    case TrainerEasyModeLevel::Low:
+        return "低档";
+    case TrainerEasyModeLevel::Medium:
+        return "中档";
+    case TrainerEasyModeLevel::High:
+        return "高档";
+    }
+
+    return "未知档位";
+}
+
+bool isValidEasyModeLevel(TrainerEasyModeLevel level)
+{
+    switch (level) {
+    case TrainerEasyModeLevel::Off:
+    case TrainerEasyModeLevel::Low:
+    case TrainerEasyModeLevel::Medium:
+    case TrainerEasyModeLevel::High:
+        return true;
+    }
+
+    return false;
+}
+
+std::chrono::seconds easyModeNukeInterval(TrainerEasyModeLevel level)
+{
+    switch (level) {
+    case TrainerEasyModeLevel::Low:
+        return std::chrono::seconds(15);
+    case TrainerEasyModeLevel::Medium:
+        return std::chrono::seconds(10);
+    case TrainerEasyModeLevel::High:
+        return std::chrono::seconds(5);
+    case TrainerEasyModeLevel::Off:
+        break;
+    }
+
+    return std::chrono::seconds::max();
+}
+
+std::chrono::seconds easyModeHealthInterval(TrainerEasyModeLevel level)
+{
+    switch (level) {
+    case TrainerEasyModeLevel::Low:
+        return std::chrono::seconds(3);
+    case TrainerEasyModeLevel::Medium:
+        return std::chrono::seconds(2);
+    case TrainerEasyModeLevel::High:
+        return std::chrono::seconds(1);
+    case TrainerEasyModeLevel::Off:
+        break;
+    }
+
+    return std::chrono::seconds::max();
 }
 
 // 把业务上的数值项映射到实际内存偏移。
@@ -115,6 +178,11 @@ void DemonStarTrainer::tick()
         notify(TrainerEventType::GameAttached, TrainerValueId::None, "已检测到 demonstar.exe，可以启用修改项");
     }
 
+    if (easyModeLevel_ != TrainerEasyModeLevel::Off) {
+        updateEasyMode();
+        return;
+    }
+
     if (planes_.enabled) {
         updateValueLock(TrainerValueId::Planes);
     }
@@ -137,6 +205,13 @@ void DemonStarTrainer::tick()
 bool DemonStarTrainer::setValueLocked(TrainerValueId valueId, bool enabled)
 {
     if (!isValidValue(valueId)) {
+        return false;
+    }
+
+    if (enabled && easyModeLevel_ != TrainerEasyModeLevel::Off) {
+        notify(TrainerEventType::EasyModeChanged,
+               valueId,
+               std::string("低难度模式已开启，不能启用") + valueName(valueId) + "锁定");
         return false;
     }
 
@@ -241,6 +316,38 @@ bool DemonStarTrainer::isValueLocked(TrainerValueId valueId) const
     return stateFor(valueId).enabled;
 }
 
+bool DemonStarTrainer::setEasyModeLevel(TrainerEasyModeLevel level)
+{
+    if (!isValidEasyModeLevel(level)) {
+        return false;
+    }
+
+    if (level == TrainerEasyModeLevel::Off) {
+        if (easyModeLevel_ != TrainerEasyModeLevel::Off) {
+            disableEasyMode();
+            notify(TrainerEventType::EasyModeChanged, TrainerValueId::None, "低难度模式已关闭");
+        }
+        if (!planes_.enabled && !nukes_.enabled && !health_.enabled) {
+            processMemory_->detach();
+            lastProcessId_ = 0;
+        }
+        return true;
+    }
+
+    disableAllLocks();
+    easyModeLevel_ = level;
+    resetEasyModeTimers();
+    notify(TrainerEventType::EasyModeChanged,
+           TrainerValueId::None,
+           std::string("低难度模式已开启：") + easyModeName(level));
+    return true;
+}
+
+TrainerEasyModeLevel DemonStarTrainer::easyModeLevel() const
+{
+    return easyModeLevel_;
+}
+
 bool DemonStarTrainer::isGameAvailable() const
 {
     return gameAvailable_;
@@ -249,6 +356,7 @@ bool DemonStarTrainer::isGameAvailable() const
 void DemonStarTrainer::shutdown()
 {
     disableAllLocks();
+    disableEasyMode();
     processMemory_->detach();
     gameAvailable_ = false;
     lastProcessId_ = 0;
@@ -277,6 +385,7 @@ void DemonStarTrainer::handleDetached(bool restarted)
 {
     // 游戏退出或重启时不能保留任何锁定值，因为旧地址和旧数值都可能失效。
     disableAllLocks();
+    resetEasyModeTimers();
     processMemory_->detach();
     gameAvailable_ = false;
     lastProcessId_ = 0;
@@ -298,6 +407,7 @@ void DemonStarTrainer::handleMemoryAccessFailed(TrainerValueId valueId, TrainerE
 
     // 进程仍在但读写失败时，保留进程检测能力，但禁用所有锁定项。
     disableAllLocks();
+    disableEasyMode();
     // 使用 TrainerValueId::None 通知 UI 重新同步所有复选框。
     notify(type, TrainerValueId::None, message);
 }
@@ -305,6 +415,77 @@ void DemonStarTrainer::handleMemoryAccessFailed(TrainerValueId valueId, TrainerE
 void DemonStarTrainer::updateValueLock(TrainerValueId valueId)
 {
     updateLockedValue(valueId);
+}
+
+void DemonStarTrainer::updateEasyMode()
+{
+    if (easyModeLevel_ == TrainerEasyModeLevel::Off) {
+        return;
+    }
+
+    if (!ensureGameProcess()) {
+        handleDetached(false);
+        return;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    if (easyLastNukeTick_ == std::chrono::steady_clock::time_point{}) {
+        easyLastNukeTick_ = now;
+    }
+    if (easyLastHealthTick_ == std::chrono::steady_clock::time_point{}) {
+        easyLastHealthTick_ = now;
+    }
+
+    std::int32_t healthValue = 0;
+    if (!readValue(TrainerValueId::Health, healthValue)) {
+        handleMemoryAccessFailed(TrainerValueId::Health,
+                                 TrainerEventType::ReadFailed,
+                                 "读取生命值失败，低难度模式已关闭");
+        return;
+    }
+
+    if (healthValue > EasyModeHealthLimit) {
+        if (!writeValue(TrainerValueId::Health, EasyModeHealthLimit)) {
+            handleMemoryAccessFailed(TrainerValueId::Health,
+                                     TrainerEventType::WriteFailed,
+                                     "写入生命值失败，低难度模式已关闭");
+            return;
+        }
+        healthValue = EasyModeHealthLimit;
+    }
+
+    if (now - easyLastNukeTick_ >= easyModeNukeInterval(easyModeLevel_)) {
+        easyLastNukeTick_ = now;
+        std::int32_t nukeValue = 0;
+        if (!readValue(TrainerValueId::Nukes, nukeValue)) {
+            handleMemoryAccessFailed(TrainerValueId::Nukes,
+                                     TrainerEventType::ReadFailed,
+                                     "读取核弹数量失败，低难度模式已关闭");
+            return;
+        }
+
+        if (nukeValue < EasyModeNukeLimit) {
+            const std::int32_t newNukeValue = nukeValue + 1;
+            if (!writeValue(TrainerValueId::Nukes, newNukeValue)) {
+                handleMemoryAccessFailed(TrainerValueId::Nukes,
+                                         TrainerEventType::WriteFailed,
+                                         "写入核弹数量失败，低难度模式已关闭");
+                return;
+            }
+        }
+    }
+
+    if (now - easyLastHealthTick_ >= easyModeHealthInterval(easyModeLevel_)) {
+        easyLastHealthTick_ = now;
+        if (healthValue < EasyModeHealthLimit) {
+            const std::int32_t newHealthValue = healthValue + 1;
+            if (!writeValue(TrainerValueId::Health, newHealthValue)) {
+                handleMemoryAccessFailed(TrainerValueId::Health,
+                                         TrainerEventType::WriteFailed,
+                                         "写入生命值失败，低难度模式已关闭");
+            }
+        }
+    }
 }
 
 void DemonStarTrainer::updateLockedValue(TrainerValueId valueId)
@@ -355,6 +536,18 @@ void DemonStarTrainer::disableAllLocks()
     planes_ = {};
     nukes_ = {};
     health_ = {};
+}
+
+void DemonStarTrainer::disableEasyMode()
+{
+    easyModeLevel_ = TrainerEasyModeLevel::Off;
+    resetEasyModeTimers();
+}
+
+void DemonStarTrainer::resetEasyModeTimers()
+{
+    easyLastNukeTick_ = {};
+    easyLastHealthTick_ = {};
 }
 
 void DemonStarTrainer::notify(TrainerEventType type, TrainerValueId valueId, const std::string &message, int value)

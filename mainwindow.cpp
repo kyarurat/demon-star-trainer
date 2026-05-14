@@ -6,6 +6,7 @@
 #endif
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QKeySequence>
 #include <QPushButton>
 #include <QShortcut>
@@ -60,6 +61,11 @@ MainWindow::MainWindow(QWidget *parent)
     ui->infinitePlanesCheckBox->setText(QStringLiteral("锁定 (Ctrl+1)"));
     ui->infiniteNukesCheckBox->setText(QStringLiteral("锁定 (Ctrl+2)"));
     ui->infiniteHealthCheckBox->setText(QStringLiteral("锁定 (Ctrl+3)"));
+    ui->easyModeCheckBox->setText(QStringLiteral("低难度模式"));
+    ui->easyModeLevelComboBox->clear();
+    ui->easyModeLevelComboBox->addItem(QStringLiteral("低档：核弹15秒 / 生命3秒"));
+    ui->easyModeLevelComboBox->addItem(QStringLiteral("中档：核弹10秒 / 生命2秒"));
+    ui->easyModeLevelComboBox->addItem(QStringLiteral("高档：核弹5秒 / 生命1秒"));
 
 #ifdef Q_OS_WIN
     trainer = std::make_unique<demonstar::DemonStarTrainer>();
@@ -72,6 +78,8 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->addPlanesButton, &QPushButton::clicked, this, &MainWindow::increasePlanes);
     connect(ui->addNukesButton, &QPushButton::clicked, this, &MainWindow::increaseNukes);
     connect(ui->addHealthButton, &QPushButton::clicked, this, &MainWindow::increaseHealth);
+    connect(ui->easyModeCheckBox, &QCheckBox::toggled, this, &MainWindow::applyEasyMode);
+    connect(ui->easyModeLevelComboBox, qOverload<int>(&QComboBox::currentIndexChanged), this, &MainWindow::applyEasyModeLevel);
 
     setGameAvailable(false);
     setupHotkeys();
@@ -100,6 +108,7 @@ void MainWindow::onTrainerEvent(const demonstar::TrainerEvent &event)
     } else {
         syncAllLockCheckboxes();
     }
+    syncEasyModeControls();
 
     if (!event.message.empty()) {
         statusBar()->showMessage(toQString(event.message), 2000);
@@ -159,10 +168,12 @@ void MainWindow::updateTrainer()
         trainer->tick();
         setGameAvailable(trainer->isGameAvailable());
         syncAllLockCheckboxes();
+        syncEasyModeControls();
     }
 #else
     setGameAvailable(false);
     syncAllLockCheckboxes();
+    syncEasyModeControls();
 #endif
 }
 
@@ -251,6 +262,61 @@ void MainWindow::syncAllLockCheckboxes()
     syncLockCheckbox(demonstar::TrainerValueId::Health, false);
 }
 
+void MainWindow::syncEasyModeControls()
+{
+#ifdef Q_OS_WIN
+    const demonstar::TrainerEasyModeLevel level = trainer ? trainer->easyModeLevel()
+                                                          : demonstar::TrainerEasyModeLevel::Off;
+#else
+    const demonstar::TrainerEasyModeLevel level = demonstar::TrainerEasyModeLevel::Off;
+#endif
+    const bool enabled = level != demonstar::TrainerEasyModeLevel::Off;
+
+    {
+        const QSignalBlocker blocker(ui->easyModeCheckBox);
+        ui->easyModeCheckBox->setChecked(enabled);
+    }
+
+    int index = ui->easyModeLevelComboBox->currentIndex();
+    switch (level) {
+    case demonstar::TrainerEasyModeLevel::Low:
+        index = 0;
+        break;
+    case demonstar::TrainerEasyModeLevel::Medium:
+        index = 1;
+        break;
+    case demonstar::TrainerEasyModeLevel::High:
+        index = 2;
+        break;
+    case demonstar::TrainerEasyModeLevel::Off:
+        break;
+    }
+
+    {
+        const QSignalBlocker blocker(ui->easyModeLevelComboBox);
+        ui->easyModeLevelComboBox->setCurrentIndex(index);
+    }
+
+    ui->easyModeLevelComboBox->setEnabled(enabled);
+    ui->infinitePlanesCheckBox->setEnabled(!enabled);
+    ui->infiniteNukesCheckBox->setEnabled(!enabled);
+    ui->infiniteHealthCheckBox->setEnabled(!enabled);
+}
+
+demonstar::TrainerEasyModeLevel MainWindow::selectedEasyModeLevel() const
+{
+    switch (ui->easyModeLevelComboBox->currentIndex()) {
+    case 0:
+        return demonstar::TrainerEasyModeLevel::Low;
+    case 1:
+        return demonstar::TrainerEasyModeLevel::Medium;
+    case 2:
+        return demonstar::TrainerEasyModeLevel::High;
+    default:
+        return demonstar::TrainerEasyModeLevel::Low;
+    }
+}
+
 void MainWindow::togglePlanes()
 {
     if (!trainer || !trainer->isGameAvailable()) {
@@ -323,6 +389,34 @@ void MainWindow::applyHealth(bool enabled)
     Q_UNUSED(enabled)
     syncLockCheckbox(demonstar::TrainerValueId::Health, false);
     statusBar()->showMessage(QStringLiteral("内存修改功能仅支持 Windows"), 2000);
+#endif
+}
+
+void MainWindow::applyEasyMode(bool enabled)
+{
+#ifdef Q_OS_WIN
+    if (trainer) {
+        trainer->setEasyModeLevel(enabled ? selectedEasyModeLevel()
+                                          : demonstar::TrainerEasyModeLevel::Off);
+        syncAllLockCheckboxes();
+        syncEasyModeControls();
+    }
+#else
+    Q_UNUSED(enabled)
+    syncEasyModeControls();
+    statusBar()->showMessage(QStringLiteral("内存修改功能仅支持 Windows"), 2000);
+#endif
+}
+
+void MainWindow::applyEasyModeLevel(int index)
+{
+    Q_UNUSED(index);
+#ifdef Q_OS_WIN
+    if (trainer && trainer->easyModeLevel() != demonstar::TrainerEasyModeLevel::Off) {
+        trainer->setEasyModeLevel(selectedEasyModeLevel());
+        syncAllLockCheckboxes();
+        syncEasyModeControls();
+    }
 #endif
 }
 

@@ -47,6 +47,9 @@ trainer.addValue(demonstar::TrainerValueId::Health, 160);
 // 如果锁定状态下调用 addValue()，锁定值也会同步增加。
 trainer.setValueLocked(demonstar::TrainerValueId::Planes, true);
 
+// 低难度模式会关闭严格锁定，并按档位自动恢复核弹和生命值。
+trainer.setEasyModeLevel(demonstar::TrainerEasyModeLevel::Medium);
+
 // 不再使用时释放进程句柄并关闭所有锁定。
 trainer.shutdown();
 ```
@@ -56,6 +59,16 @@ trainer.shutdown();
 - `TrainerValueId::Planes`：飞机数量
 - `TrainerValueId::Nukes`：核弹数量
 - `TrainerValueId::Health`：生命值
+
+## 低难度模式
+
+调用 `setEasyModeLevel()` 可以切换低难度模式，`TrainerEasyModeLevel::Off` 表示关闭。
+
+- `Low`：核弹每 `15s` 增加 1，生命值每 `3s` 增加 1
+- `Medium`：核弹每 `10s` 增加 1，生命值每 `2s` 增加 1
+- `High`：核弹每 `5s` 增加 1，生命值每 `1s` 增加 1
+
+低难度模式不会读写飞机数量；核弹最多补到 `5`，生命值最多 `160` 且超过上限会被写回 `160`。开启低难度模式会关闭严格锁定状态，宿主 UI 应同步禁用锁定入口。
 
 ## 说明
 
